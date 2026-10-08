@@ -6,7 +6,7 @@ A prévia local já permite escolher ação, definir duração de 1 minuto a 7 d
 
 ![Painel real da prévia simulada](docs/screenshots/task02-simulation.png)
 
-O núcleo passou por 241 verificações. Preview e DLL x86 compilam; a execução integrada no Windhawk 1.7.3 já foi confirmada com uma contagem simulada completa. A validação de bandeja e ciclo de vida continua em andamento. Tarefa 02 permanece aberta, antes de persistência e repetição.
+O núcleo passou por 241 verificações. Preview e DLL x86 compilam; a execução integrada no Windhawk 1.7.3 já foi confirmada com uma contagem simulada completa. Bandeja, cancelamento, desativação/reativação, recuperação do Explorer e saída foram validados localmente. Tarefa02concluída; próxima entrega é persistência e lista de agendamentos.
 
 - [Validação e limitações atuais](docs/validation/task-02.md)
 - [Preparação e instalação local](docs/installation-local.md)

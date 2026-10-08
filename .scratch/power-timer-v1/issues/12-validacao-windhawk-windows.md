@@ -21,3 +21,5 @@
 ## Comments
 
 - 08/10/2026: divisão, critérios e dependências aprovados pelo usuário. Tarefa publicada localmente; execução ainda não iniciada.
+
+- 08/10/2026: incluir explicitamente sessões simultâneas do mesmo usuário na matriz de instância única. Na tarefa02, mutex global por SID revisado e sessão única testada; não houve prova prática multissessão.

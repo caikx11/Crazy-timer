@@ -1,4 +1,4 @@
-# Revisão da tarefa 02 — entrega local parcial
+# Revisão da tarefa 02 — entrega local concluída
 
 Data: 08/10/2026. Skill: matt-code-review. Base escolhida sob autorização de autonomia: última entrega concluída, `ef6a38aa0a59c53b147310e8286d5e83ee31c03e`. Snapshot: `75b368b3e1232ac2e10bd2556bc9e6739f43e711`.
 
@@ -35,3 +35,11 @@ A implementação local está aderente à fatia 02; não encontrei defeitos conc
 **Resultado: zero defeitos concretos e uma lacuna de integração já documentada; aceite integral da tarefa 02 permanece pendente.**
 
 Total final: Standards 0 pendentes (P3 resolvido), pior problema nenhum; Spec 1 lacuna de validação, integração no Windhawk pendente.
+
+## Encerramento após prova integrada
+
+O mesmo revisor Spec (Sol/high) verificou o relatório atualizado em 08/10/2026. Aceite local recomendado: clique/menu e retorno do ícone confirmados pelo usuário; processo, contagem, cancelamento, desabilitação/reativação, continuidade após Explorer e Sair conferidos pelo agente. Não há novos defeitos ou bloqueios. Código/scripts/testes permaneceram iguais desde316de71, sem necessidade de repetir testes.
+
+A lacuna original acima está resolvida para a fatia local. Unicidade entre sessões simultâneas ainda não foi exercitada; cenário explicitamente mantido na matriz12. Isso não impede iniciar03.
+
+Resultado vigente: Standards0 pendentes; Spec0 pendentes nesta fatia local. Tarefa02resolvida. Nenhuma publicação ou teste real de energia realizado.

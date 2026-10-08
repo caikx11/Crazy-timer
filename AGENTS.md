@@ -4,6 +4,9 @@ Responda em pt-BR. Ao retomar, leia PROJECT_CONTEXT.md.
 Execute scripts/test.ps1 após mudanças no agendador.
 Os testes usam ações simuladas; ações reais de energia exigem teste manual deliberado.
 
+## Interações no Windows
+O usuário pediu que o agente use a skill computer-use:computer-use para realizar as interações que normalmente seriam delegadas a ele. Ler a skill e usar suas APIs suportadas antes de pedir operação manual. Recorrer ao usuário quando houver bloqueio efetivo de acesso, confirmação obrigatória ou ação não suportada; não contornar barreiras de segurança. Autorizações anteriores continuam válidas no escopo concedido.
+
 ## Escolha de modelo antes de cada etapa
 Ao concluir uma etapa e anunciar a próxima, incluir na própria resposta final o modelo recomendado para a próxima etapa, o esforço de raciocínio e se o usuário deve manter ou trocar sua seleção, quando verificável. Repetir essa orientação antes de iniciar a etapa. Não apenas mencionar o nome da próxima skill e deixar a orientação para depois. Se a seleção atual não for verificável, usar uma orientação condicional clara, como: "Se está em Astra/high, pode manter; não consigo verificar o seletor atual."
 Informar também o esforço de raciocínio recomendado (por exemplo, high), justificar brevemente e comparar com o esforço atual somente quando ele puder ser verificado. Nunca afirmar conhecer modelo ou esforço selecionados sem evidência. Para to-spec, recomendação registrada em 08/10/2026: GPT-6 Astra, esforço high; reavaliar nas próximas etapas. Não alterar o seletor automaticamente.

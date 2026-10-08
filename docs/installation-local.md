@@ -1,6 +1,6 @@
 # Instalação local da prévia simulada
 
-Esta prévia nunca desliga, suspende ou hiberna o computador. Agendamentos ficam em memória. Compilação local e execução de uma contagem simulada no Windhawk foram validadas nesta máquina. Bandeja e ciclo de vida ainda estão em validação.
+Esta prévia nunca desliga, suspende ou hiberna o computador. Agendamentos ficam em memória. Compilação local e execução de uma contagem simulada no Windhawk foram validadas nesta máquina. Bandeja e ciclo de vida foram validados localmente; a matriz ampliada de compatibilidade continua futura.
 
 ## Preparar
 

@@ -1,6 +1,6 @@
-# Retrospectiva parcial — sessão da tarefa 02
+# Retrospectiva — tarefa 02
 
-Data: 08/10/2026. Skills retro e writing-for-agents. Fontes: pesquisa Windhawk, código e scripts da fatia, evidências do preview, revisão em dois eixos. A integração permanece pendente; esta retrospectiva não encerra a tarefa 02.
+Data: 08/10/2026. Skills retro e writing-for-agents. Fontes: pesquisa Windhawk, código e scripts da fatia, evidências do preview, revisão em dois eixos. Integração local concluída e evidências aceitas em revisão incremental.
 
 ## Melhorias propostas, por impacto
 
@@ -15,4 +15,4 @@ Núcleo puro permitiu TDD sem energia real. Preview reutiliza o mesmo host Win32
 
 ## Próximo passo
 
-Compilar/ativar pelo editor oficial com interação do usuário e executar o roteiro docs/installation-local.md. Só então avaliar encerramento de 02 e liberação de 03. Recomenda-se Astra/high para integração; seletor atual não verificável.
+Roteiro integrado executado; tarefa02resolvida e03liberada. A consulta de processos deve ocorrer fora do sandbox, pois a enumeração isolada não mostrava o host real. Usar evidência de processo/janela para distinguir preview e mod. Recomenda-se Astra/high para integração; seletor atual não verificável.
