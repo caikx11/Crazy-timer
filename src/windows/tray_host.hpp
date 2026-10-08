@@ -159,8 +159,8 @@ class Panel {
                         24, 187, 382, 34, 0, WS_EX_CLIENTEDGE);
         SendMessageW(duration_, EM_SETLIMITTEXT, 32, 0);
         add(L"STATIC", text::duration_hint, 0, 0, 24, 226, 382, 18, 2);
-        for (int i = 0; i < 4; ++i)
-            add(L"BUTTON", text::presets[i], WS_TABSTOP | BS_OWNERDRAW, preset_id + i,
+        for (int i = 0; i < static_cast<int>(std::size(text::presets)); ++i)
+            add(L"BUTTON", text::presets[i].label, WS_TABSTOP | BS_OWNERDRAW, preset_id + i,
                 24 + 98 * i, 252, 88, 32, 2);
         preview_ = add(L"STATIC", L"", 0, 0, 24, 298, 382, 36, 2);
         start_ = add(L"BUTTON", text::schedule, WS_TABSTOP | BS_OWNERDRAW, schedule_id,
@@ -239,9 +239,9 @@ class Panel {
         if (!tray_added_ && now - last_tray_try_ >= 5000) add_tray();
     }
     void command(int id) {
-        if (id >= preset_id && id < preset_id + 4) {
-            const wchar_t* minutes[] = {L"15", L"30", L"60", L"120"};
-            SetWindowTextW(duration_, minutes[id - preset_id]);
+        if (id >= preset_id && id < preset_id + static_cast<int>(std::size(text::presets))) {
+            const auto minutes = std::to_wstring(text::presets[id - preset_id].minutes);
+            SetWindowTextW(duration_, minutes.c_str());
             SetFocus(duration_);
             SendMessageW(duration_, EM_SETSEL, 0, -1);
         } else if (id == schedule_id) {

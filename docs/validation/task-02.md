@@ -24,3 +24,7 @@ Revisão intermediária de ciclo de vida identificou e corrigiu duas questões: 
 A UI do Windhawk está elevada e não respondeu aos inputs disponíveis. Verificação de token confirmou integridade alta; tentativa de abrir a chave de mods com permissão de criação retornou acesso negado. Nenhum registro/configuração/mod foi alterado. Elevar a execução fora do sandbox não equivale a privilégio de administrador Windows. Continuar pelo editor oficial quando o usuário estiver disponível; roteiro em [instalação local](../installation-local.md).
 
 Tarefa 02 permanece aberta. A tarefa 03 depende da prova de integração. Nenhuma nova quarentena observada nesta etapa; não há evidência para atribuir o bloqueio administrativo atual ao antivírus.
+
+## Revisão final da fatia local
+
+Revisão Standards/Spec em docs/reviews/task-02.md: melhoria P3 dos atalhos corrigida e reavaliada sem novos achados; uma lacuna de integração permanece. Após a refatoração da tabela, preview e DLL recompilaram, e o atalho 2 horas foi observado preenchendo 120 minutos. O núcleo permaneceu idêntico ao que passou 241 verificações. A consulta final confirmou ausência do processo de preview; a última instância não tinha ocorrência ativa.

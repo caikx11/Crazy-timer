@@ -11,7 +11,10 @@ inline constexpr auto action_label = L"O que você quer fazer?";
 inline constexpr const wchar_t* actions[] = {L"Desligar", L"Suspender", L"Hibernar"};
 inline constexpr auto duration_label = L"Daqui a quantos minutos?";
 inline constexpr auto duration_hint = L"De 1 minuto a 7 dias (10080 minutos)";
-inline constexpr const wchar_t* presets[] = {L"15 min", L"30 min", L"1 hora", L"2 horas"};
+struct DurationPreset { const wchar_t* label; unsigned minutes; };
+inline constexpr DurationPreset presets[] = {
+    {L"15 min", 15}, {L"30 min", 30}, {L"1 hora", 60}, {L"2 horas", 120}
+};
 inline constexpr auto schedule = L"Iniciar simulação";
 inline constexpr auto replace = L"Substituir agendamento";
 inline constexpr auto cancel = L"Cancelar ocorrência";
