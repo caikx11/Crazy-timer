@@ -54,3 +54,6 @@ try {
     if ($lockAcquired) { $runMutex.ReleaseMutex() }
     $runMutex.Dispose()
 }
+
+& (Join-Path $PSScriptRoot 'test-book.ps1') -Compiler $Compiler
+& (Join-Path $PSScriptRoot 'test-storage.ps1') -Compiler $Compiler

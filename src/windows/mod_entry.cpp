@@ -4,7 +4,7 @@
 // @name:pt-BR      Power Timer (Simulação)
 // @description     Schedule simulated power actions from a tray icon. No real power action is performed.
 // @description:pt-BR Agende ações simuladas pelo ícone da barra. Nenhuma ação real de energia é executada.
-// @version         0.1.0
+// @version         0.2.0
 // @author          caikx11
 // @include         windhawk.exe
 // @architecture    x86
@@ -20,7 +20,7 @@ It never shuts down, suspends or hibernates the computer.
 
 Click the icon to open the panel. Right-click for settings or to exit.
 Closing the panel keeps the simulated countdown running; disabling the mod
-stops the host and removes its icon. Schedules are in memory in this preview.
+stops the host and removes its icon. Schedules are stored locally per user; overdue occurrences expire on restart.
 
 Windhawk 1.7.3 uses its official tool-mod launcher, preserved below.
 */
