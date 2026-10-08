@@ -1,30 +1,35 @@
-# Validação — tarefa 02 (parcial)
+# Validação — tarefa 02 (integração em andamento)
 
-Data: 08/10/2026. Ambiente: Windows atual da sessão, Windhawk 1.7.3 x86, Clang 20, PowerShell 7. Nenhuma operação real de energia foi executada.
+Data: 08/10/2026. Ambiente local: Windows da sessão, Windhawk 1.7.3 x86, Clang 20, PowerShell 7. Nenhuma operação real de energia foi executada.
 
-## Verificado
+## Núcleo e compilação verificados
 
-- `scripts/test.ps1`: **241 verificações aprovadas**. Novos casos foram escritos antes da implementação: API ausente, entrada vazia e espaços produziram falhas observadas, seguidas de correção. Limites 1/10080, sinais, decimais, lixo, dígitos Unicode, overflow e preservação do agendamento anterior cobertos.
-- `scripts/build-preview.ps1`: compilação C++23 com warnings como erros aprovada.
-- `scripts/build-mod.ps1`: fonte monolítica e DLL x86 compiladas para API/engine 1.7.3. Um warning de campo não inicializado vem do launcher oficial preservado; nenhuma alteração nesse snippet.
-- Interface real do preview: início em 1 minuto, aviso final, edição para 0 rejeitada sem perder a contagem; fechar esconde e mantém processo; nova abertura recupera a mesma janela; conclusão simulada ocorreu escondida, sem clique de confirmação.
-- Preset 15 minutos e cancelamento conferidos. Tab percorreu campo e presets; foco visível. Menu Opções abriu Configurações e Sair.
-- Após correções de ciclo de vida: recompilação aprovada, preview iniciou 30 minutos, cancelou e saiu por seu menu; consulta de processos confirmou ausência de `power-timer-preview`.
-- [Captura real do painel](../screenshots/task02-simulation.png), sem mockup.
+- `scripts/test.ps1`: **241 verificações aprovadas**. TDD com falhas observadas para API ausente, entrada vazia e espaços, seguidas de correção. Cobertos limites 1/10080, sinais, decimais, lixo, dígitos Unicode, overflow, cancelamento e preservação do agendamento anterior.
+- `scripts/build-preview.ps1`: C++23 com warnings como erros aprovado.
+- `scripts/build-mod.ps1`: fonte monolítica e DLL x86 para engine 1.7.3 aprovadas. Um warning de campo não inicializado no launcher oficial preservado. SHA256 do launcher: D8FC18E29ECC63D3225C3612A524078B87907250A200AEC57058B1C3AA46B9A2.
+- Revisão Standards/Spec em [task-02.md](../reviews/task-02.md). P3 dos presets corrigido com tabela única e reavaliado sem novos achados. Ambos os alvos recompilaram; UI confirmou 2 horas → 120 minutos. Núcleo/testes permaneceram idênticos à execução de 241 verificações.
 
-Revisão intermediária de ciclo de vida identificou e corrigiu duas questões: permitir somente a mensagem inerte TaskbarCreated de Explorer menos privilegiado; encerrar o processo dedicado após limpeza quando o usuário escolhe Sair. Nova leitura do revisor não encontrou problemas concretos nessas correções. Isso não substitui a prova no engine.
+## Preview independente
 
-## Ainda não comprovado
+Interface real confirmou início em 1 minuto, aviso final, entrada 0 rejeitada preservando contagem, X esconde mantendo processamento, reabertura da mesma janela, conclusão simulada sem confirmação, preset 15 minutos, cancelamento e menu Opções/Configurações/Sair. Tab percorreu campo e presets, com foco visível. [Captura real](../screenshots/task02-simulation.png).
 
-- Carregamento no Windhawk, callbacks de desabilitação, reativação e saída do host dedicado.
-- Clique/menu diretamente no ícone e recuperação após reinício do Explorer.
-- Instância única entre sessões diferentes do mesmo usuário; reabertura na mesma sessão foi observada no preview.
-- Matriz Windows 10/11, DPI, tema completo, acessibilidade e idiomas das tarefas posteriores.
+**Limite das primeiras verificações de saída:** Get-Process dentro do sandbox não enxergava processos externos; ausência nessa consulta não comprovava encerramento. Posteriormente a janela do preview foi identificada pelo app proprietário, fechada pelo menu Sair e sua ausência confirmada por inventário de janelas e CIM fora do sandbox. A consulta CIM dentro do sandbox retornou indisponibilidade. Não usar ausência em consulta isolada como prova de runtime.
 
-A UI do Windhawk está elevada e não respondeu aos inputs disponíveis. Verificação de token confirmou integridade alta; tentativa de abrir a chave de mods com permissão de criação retornou acesso negado. Nenhum registro/configuração/mod foi alterado. Elevar a execução fora do sandbox não equivale a privilégio de administrador Windows. Continuar pelo editor oficial quando o usuário estiver disponível; roteiro em [instalação local](../installation-local.md).
+## Integração Windhawk comprovada até aqui
 
-Tarefa 02 permanece aberta. A tarefa 03 depende da prova de integração. Nenhuma nova quarentena observada nesta etapa; não há evidência para atribuir o bloqueio administrativo atual ao antivírus.
+1. Usuário instalou/ativou pelo editor oficial. Fonte `ModsSource/local@power-timer-simulation.wh.cpp` corresponde à fonte gerada após normalizar CRLF/LF e espaço final. Registro lido: Disabled=0, Version=0.1.0, Include=windhawk.exe, Architecture=x86, LibraryFileName=local@power-timer-simulation_0.1.0_530652.dll.
+2. Primeiro painel ainda era do preview independente, que compartilha exclusão de instância com o mod. Preview encerrado pelo menu. Usuário desativou/reativou somente Power Timer.
+3. Inventário de janelas identificou painel com proprietário `C:/Program Files/Windhawk/windhawk.exe`. CIM fora do sandbox confirmou exatamente um processo com `-tool-mod "local@power-timer-simulation"` (PID 1924 nesta execução), nenhum preview. Outros mods não foram alterados.
+4. Automação operou o painel integrado: duração 1, Iniciar simulação, contagem 00:01:00 e aviso Últimos 60 segundos. X escondeu a janela. [Captura real da contagem](../screenshots/task02-windhawk.png).
+5. Após interrupção do controle pelo usuário com Escape e autorização para retomar, nova observação do mesmo painel confirmou **Simulação concluída** / **Intenção registrada. Nenhuma ação real executada.** O estado final não exigiu clique de confirmação.
 
-## Revisão final da fatia local
+## Ainda pendente
 
-Revisão Standards/Spec em docs/reviews/task-02.md: melhoria P3 dos atalhos corrigida e reavaliada sem novos achados; uma lacuna de integração permanece. Após a refatoração da tabela, preview e DLL recompilaram, e o atalho 2 horas foi observado preenchendo 120 minutos. O núcleo permaneceu idêntico ao que passou 241 verificações. A consulta final confirmou ausência do processo de preview; a última instância não tinha ocorrência ativa.
+- Confirmação de clique/menu diretamente no ícone; pergunta ao usuário em andamento.
+- Desabilitação com host em execução: ícone, timer e processo encerram; reativação cria uma instância. Saída pelo menu no processo dedicado.
+- Reinício do Explorer recria só o ícone, preservando host e ocorrência.
+- Instância única entre sessões diferentes do mesmo usuário ainda sem teste prático; exclusão via mutex por SID foi revisada. Matriz Windows 10/11, DPI, temas, acessibilidade completa e idiomas têm tarefas posteriores.
+
+A UI administrativa do editor Windhawk não respondeu aos inputs disponíveis na investigação inicial; token confirmou integridade alta e acesso de gravação HKLM negado. O usuário realizou a instalação normalmente. O painel do host dedicado aceita a automação. Nenhuma ACL/proteção foi alterada pelo agente. Nenhuma nova quarentena observada; não atribuir o bloqueio administrativo ao antivírus.
+
+Tarefa 02 permanece aberta até a prova de integração restante. Tarefa 03 continua bloqueada. Roteiro em [instalação local](../installation-local.md).
