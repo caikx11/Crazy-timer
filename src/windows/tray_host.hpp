@@ -23,6 +23,7 @@
 #include "../scheduler.hpp"
 #include "../schedule_book.hpp"
 #include "schedule_file.hpp"
+#include "local_calendar.hpp"
 #include "../strings.hpp"
 
 namespace power_timer::windows {
@@ -41,7 +42,8 @@ inline void (*log_message)(const wchar_t*) = nullptr;
 
 enum ControlId { action_id = 100, duration_id, schedule_id, cancel_id,
                  preset_id = 110, open_id = 120, settings_id, visibility_id, exit_id, menu_id,
-                 list_id = 130, edit_id, pause_id, erase_id, new_id };
+                 list_id = 130, edit_id, pause_id, erase_id, new_id,
+                 kind_id = 140, date_id, time_id, daily_id, weekday_id = 150 };
 
 inline ClockSample clock_sample() {
     FILETIME file{};
@@ -69,13 +71,12 @@ inline void set_text(HWND window, const std::wstring& value) {
 }
 
 inline std::wstring local_time_at(std::uint64_t utc_ms) {
-    ULARGE_INTEGER ticks{};
-    if (utc_ms > (UINT64_MAX - 116444736000000000ULL) / 10000) return text::unavailable_time;
-    ticks.QuadPart = utc_ms * 10000 + 116444736000000000ULL;
-    FILETIME file{ticks.LowPart, ticks.HighPart};
-    SYSTEMTIME utc{}, local{};
-    if (!FileTimeToSystemTime(&file, &utc) ||
-        !SystemTimeToTzSpecificLocalTime(nullptr, &utc, &local)) return text::unavailable_time;
+    const auto civil = WindowsCalendar{}.local(utc_ms);
+    if (!civil) return text::unavailable_time;
+    SYSTEMTIME local{};
+    local.wYear = static_cast<WORD>(civil->year); local.wMonth = static_cast<WORD>(civil->month);
+    local.wDay = static_cast<WORD>(civil->day); local.wHour = static_cast<WORD>(civil->hour);
+    local.wMinute = static_cast<WORD>(civil->minute);
     wchar_t date[96]{}, time[96]{};
     if (!GetDateFormatEx(LOCALE_NAME_USER_DEFAULT, DATE_SHORTDATE, &local, nullptr, date, 96, nullptr) ||
         !GetTimeFormatEx(LOCALE_NAME_USER_DEFAULT, TIME_NOSECONDS, &local, nullptr, time, 96))
@@ -120,7 +121,10 @@ class Panel {
     HICON icon_{};
     HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{};
     FileScheduleStorage storage_;
+    WindowsCalendar calendar_;
     ScheduleBook book_;
+    HWND kind_{}, date_{}, time_{}, days_[7]{};
+    std::vector<HWND> duration_controls_, once_controls_, weekly_controls_, calendar_controls_;
     HWND list_{}, edit_{}, pause_{}, erase_{};
     std::uint64_t selected_id_{}, editing_id_{};
     std::vector<std::uint64_t> displayed_ids_;
@@ -178,39 +182,65 @@ class Panel {
                       action_id, 24, 121, 254, 180);
         for (const auto* action : text::actions) SendMessageW(action_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(action));
         SendMessageW(action_, CB_SETCURSEL, 0, 0);
-        add(L"STATIC", text::duration_label, 0, 0, 304, 96, 252, 22);
+        add(L"STATIC", text::kind_label, 0, 0, 304, 96, 252, 22);
+        kind_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                    kind_id, 304, 121, 252, 160);
+        for (const auto* kind : text::kinds) SendMessageW(kind_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(kind));
+        SendMessageW(kind_, CB_SETCURSEL, 0, 0);
+        duration_controls_.push_back(add(L"STATIC", text::duration_label, 0, 0, 24, 166, 270, 22));
         duration_ = add(L"EDIT", L"30", WS_TABSTOP | ES_AUTOHSCROLL, duration_id,
-                        304, 121, 252, 34, 0, WS_EX_CLIENTEDGE);
+                        24, 190, 254, 34, 0, WS_EX_CLIENTEDGE);
+        duration_controls_.push_back(duration_);
         SendMessageW(duration_, EM_SETLIMITTEXT, 32, 0);
-        add(L"STATIC", text::duration_hint, 0, 0, 304, 159, 252, 18, 2);
+        duration_controls_.push_back(add(L"STATIC", text::duration_hint, 0, 0, 304, 196, 252, 22, 2));
         for (int i = 0; i < static_cast<int>(std::size(text::presets)); ++i)
-            add(L"BUTTON", text::presets[i].label, WS_TABSTOP | BS_OWNERDRAW, preset_id + i,
-                24 + 136 * i, 188, 124, 32, 2);
-        preview_ = add(L"STATIC", L"", 0, 0, 24, 230, 532, 26, 2);
+            duration_controls_.push_back(add(L"BUTTON", text::presets[i].label, WS_TABSTOP | BS_OWNERDRAW, preset_id + i,
+                24 + 136 * i, 238, 124, 32, 2));
+        once_controls_.push_back(add(L"STATIC", text::date_label, 0, 0, 24, 166, 254, 22));
+        date_ = add(DATETIMEPICK_CLASSW, L"", WS_TABSTOP | DTS_SHORTDATEFORMAT, date_id, 24, 190, 254, 34);
+        SendMessageW(date_, DTM_SETFORMATW, 0, reinterpret_cast<LPARAM>(L"dd/MM/yyyy"));
+        SYSTEMTIME range[2]{}; range[0].wYear = 1970; range[0].wMonth = 1; range[0].wDay = 1;
+        range[1].wYear = 9999; range[1].wMonth = 12; range[1].wDay = 31;
+        DateTime_SetRange(date_, GDTR_MIN | GDTR_MAX, range);
+        once_controls_.push_back(date_);
+        calendar_controls_.push_back(add(L"STATIC", text::time_label, 0, 0, 304, 166, 252, 22));
+        time_ = add(DATETIMEPICK_CLASSW, L"", WS_TABSTOP | DTS_TIMEFORMAT | DTS_UPDOWN, time_id, 304, 190, 252, 34);
+        SendMessageW(time_, DTM_SETFORMATW, 0, reinterpret_cast<LPARAM>(L"HH:mm"));
+        calendar_controls_.push_back(time_);
+        weekly_controls_.push_back(add(L"STATIC", text::weekly_label, 0, 0, 24, 166, 270, 22, 2));
+        weekly_controls_.push_back(add(L"BUTTON", text::daily, WS_TABSTOP | BS_OWNERDRAW, daily_id, 24, 190, 254, 34, 2));
+        for (int i = 0; i < 7; ++i) {
+            days_[i] = add(L"BUTTON", text::weekdays[i], WS_TABSTOP | BS_AUTOCHECKBOX, weekday_id + i,
+                           24 + 76 * i, 238, 74, 30, 2);
+            SendMessageW(days_[i], BM_SETCHECK, BST_CHECKED, 0);
+            weekly_controls_.push_back(days_[i]);
+        }
+        preview_ = add(L"STATIC", L"", 0, 0, 24, 280, 532, 30, 2);
         start_ = add(L"BUTTON", text::add_schedule, WS_TABSTOP | BS_OWNERDRAW, schedule_id,
-                     24, 264, 360, 38);
-        add(L"BUTTON", text::new_schedule, WS_TABSTOP | BS_OWNERDRAW, new_id, 400, 264, 156, 38);
-        add(L"STATIC", text::schedules, 0, 0, 24, 320, 532, 22);
+                     24, 314, 360, 36);
+        add(L"BUTTON", text::new_schedule, WS_TABSTOP | BS_OWNERDRAW, new_id, 400, 314, 156, 36);
+        add(L"STATIC", text::schedules, 0, 0, 24, 364, 532, 22);
         list_ = add(WC_LISTVIEWW, L"", WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
-                    list_id, 24, 348, 532, 144, 2, WS_EX_CLIENTEDGE);
+                    list_id, 24, 390, 532, 130, 2, WS_EX_CLIENTEDGE);
         ListView_SetExtendedListViewStyle(list_, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-        const wchar_t* labels[] = {text::action_column, text::due_column, text::state_column, text::duration_column};
+        const wchar_t* labels[] = {text::action_column, text::due_column, text::state_column, text::rule_column};
         const int widths[] = {100, 184, 142, 82};
         for (int i = 0; i < 4; ++i) {
             LVCOLUMNW column{}; column.mask = LVCF_TEXT | LVCF_WIDTH;
             column.pszText = const_cast<wchar_t*>(labels[i]); column.cx = px(widths[i]);
             ListView_InsertColumn(list_, i, &column);
         }
-        edit_ = add(L"BUTTON", text::edit, WS_TABSTOP | BS_OWNERDRAW, edit_id, 24, 508, 124, 34, 2);
-        pause_ = add(L"BUTTON", text::pause, WS_TABSTOP | BS_OWNERDRAW, pause_id, 160, 508, 124, 34, 2);
-        erase_ = add(L"BUTTON", text::erase, WS_TABSTOP | BS_OWNERDRAW, erase_id, 296, 508, 124, 34, 2);
-        cancel_ = add(L"BUTTON", text::cancel, WS_TABSTOP | BS_OWNERDRAW, cancel_id, 432, 508, 124, 34, 2);
-        status_ = add(L"STATIC", text::idle, SS_CENTER, 0, 24, 562, 532, 24);
-        countdown_ = add(L"STATIC", text::clock_empty, SS_CENTER, 0, 24, 589, 532, 52, 3);
-        detail_ = add(L"STATIC", text::idle_detail, SS_CENTER, 0, 24, 645, 532, 32, 2);
-        error_ = add(L"STATIC", L"", SS_CENTER, 0, 24, 687, 532, 40, 2);
-        add(L"STATIC", text::simulation_note, SS_CENTER, 0, 24, 738, 532, 22, 2);
+        edit_ = add(L"BUTTON", text::edit, WS_TABSTOP | BS_OWNERDRAW, edit_id, 24, 534, 124, 34, 2);
+        pause_ = add(L"BUTTON", text::pause, WS_TABSTOP | BS_OWNERDRAW, pause_id, 160, 534, 124, 34, 2);
+        erase_ = add(L"BUTTON", text::erase, WS_TABSTOP | BS_OWNERDRAW, erase_id, 296, 534, 124, 34, 2);
+        cancel_ = add(L"BUTTON", text::cancel, WS_TABSTOP | BS_OWNERDRAW, cancel_id, 432, 534, 124, 34, 2);
+        status_ = add(L"STATIC", text::idle, SS_CENTER, 0, 24, 580, 532, 24);
+        countdown_ = add(L"STATIC", text::clock_empty, SS_CENTER, 0, 24, 608, 532, 48, 3);
+        detail_ = add(L"STATIC", text::idle_detail, SS_CENTER, 0, 24, 660, 532, 40, 2);
+        error_ = add(L"STATIC", L"", SS_CENTER, 0, 24, 710, 532, 42, 2);
+        add(L"STATIC", text::simulation_note, SS_CENTER, 0, 24, 766, 532, 22, 2);
         fonts_and_layout();
+        show_kind();
     }
     std::wstring duration_text() const {
         wchar_t value[64]{};
@@ -220,16 +250,47 @@ class Panel {
     Action selected_action() const {
         return static_cast<Action>(SendMessageW(action_, CB_GETCURSEL, 0, 0));
     }
+    ScheduleKind selected_kind() const {
+        return static_cast<ScheduleKind>(SendMessageW(kind_, CB_GETCURSEL, 0, 0));
+    }
+    CivilTime selected_civil() const {
+        SYSTEMTIME date{}, time{};
+        if (DateTime_GetSystemtime(date_, &date) != GDT_VALID ||
+            DateTime_GetSystemtime(time_, &time) != GDT_VALID) return {};
+        return {date.wYear, date.wMonth, date.wDay, time.wHour, time.wMinute};
+    }
+    unsigned selected_days() const {
+        unsigned mask = 0;
+        for (unsigned i = 0; i < 7; ++i)
+            if (SendMessageW(days_[i], BM_GETCHECK, 0, 0) == BST_CHECKED) mask |= 1u << i;
+        return mask;
+    }
+    void show_kind() {
+        const auto kind = selected_kind();
+        for (const auto control : duration_controls_) ShowWindow(control, kind == ScheduleKind::Duration ? SW_SHOW : SW_HIDE);
+        for (const auto control : once_controls_) ShowWindow(control, kind == ScheduleKind::Once ? SW_SHOW : SW_HIDE);
+        for (const auto control : weekly_controls_) ShowWindow(control, kind == ScheduleKind::Weekly ? SW_SHOW : SW_HIDE);
+        for (const auto control : calendar_controls_) ShowWindow(control, kind != ScheduleKind::Duration ? SW_SHOW : SW_HIDE);
+        preview();
+    }
     void preview() {
         if (!preview_) return;
-        const auto minutes = Scheduler::parse_duration(duration_text());
+        const auto now = clock_sample();
+        const auto kind = selected_kind();
+        const auto civil = selected_civil();
+        std::optional<std::uint64_t> due;
+        if (kind == ScheduleKind::Duration) {
+            const auto minutes = Scheduler::parse_duration(duration_text());
+            if (minutes && now.utc_ms <= UINT64_MAX - *minutes * 60000) due = now.utc_ms + *minutes * 60000;
+        } else if (kind == ScheduleKind::Once) due = book_.preview_once(civil, now);
+        else if (kind == ScheduleKind::Weekly) due = book_.preview_weekly(selected_days(), civil.hour * 60 + civil.minute, now);
         const auto action = static_cast<int>(selected_action());
-        if (!minutes || action < 0 || action > 2) {
-            set_text(preview_, text::invalid_preview);
+        if (!due || action < 0 || action > 2) {
+            set_text(preview_, kind == ScheduleKind::Duration ? text::invalid_preview : text::calendar_preview_error);
             return;
         }
         set_text(preview_, std::wstring(text::preview_prefix) + text::actions[action] +
-            text::separator + local_time_at(clock_sample().utc_ms + *minutes * 60000));
+            text::separator + local_time_at(*due));
     }
     void notify(const wchar_t* title, const wchar_t* body) {
         if (!tray_added_) return;
@@ -258,7 +319,8 @@ class Panel {
     void show_error() {
         const wchar_t* message = L"";
         switch (book_.error()) {
-            case BookError::InvalidInput: message = text::record_input_error; break;
+            case BookError::InvalidInput: message = selected_kind() == ScheduleKind::Duration ? text::record_input_error : text::calendar_input_error; break;
+            case BookError::Calendar: message = text::calendar_error; break;
             case BookError::NotFound: message = text::missing_record; break;
             case BookError::Storage: message = text::storage_error; break;
             case BookError::InvalidData: message = text::invalid_data; break;
@@ -288,10 +350,11 @@ class Panel {
             item.pszText = const_cast<wchar_t*>(text::actions[static_cast<int>(record.action)]);
             ListView_InsertItem(list_, &item);
             auto due = record.state == OccurrenceState::Scheduled ? local_time_at(record.due_utc_ms) : std::wstring(text::no_next);
-            auto minutes = std::to_wstring(record.minutes);
+            auto rule = record.kind == ScheduleKind::Duration ? std::to_wstring(record.minutes) + L" min" :
+                std::wstring(record.kind == ScheduleKind::Once ? text::once_rule : text::weekly_rule);
             ListView_SetItemText(list_, row, 1, due.data());
             ListView_SetItemText(list_, row, 2, const_cast<wchar_t*>(state_label(record)));
-            ListView_SetItemText(list_, row, 3, minutes.data());
+            ListView_SetItemText(list_, row, 3, rule.data());
             if (record.id == selected_id_) ListView_SetItemState(list_, row, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
         }
         SendMessageW(list_, WM_SETREDRAW, TRUE, 0);
@@ -339,8 +402,17 @@ class Panel {
             } else set_text(countdown_, text::clock_empty);
             const wchar_t* note = record->state == OccurrenceState::Uncertain ? text::uncertain_detail :
                 record->paused && scheduled ? text::paused_detail : nullptr;
-            set_text(detail_, note ? std::wstring(note) : std::wstring(text::actions[static_cast<int>(record->action)]) +
-                text::separator + local_time_at(record->due_utc_ms));
+            std::wstring detail = note ? std::wstring(note) : std::wstring(text::actions[static_cast<int>(record->action)]) +
+                text::separator + local_time_at(record->due_utc_ms);
+            if (record->kind == ScheduleKind::Weekly) {
+                detail += L"\n";
+                for (unsigned i = 0; i < 7; ++i) if (record->weekdays & (1u << i)) detail += std::wstring(text::weekdays[i]) + L" ";
+                if (record->last_occurrence_id) {
+                    auto last = *record; last.state = record->last_state; last.paused = false;
+                    detail += std::wstring(text::separator) + text::last_result + state_label(last);
+                }
+            }
+            set_text(detail_, detail);
         } else {
             set_text(status_, text::idle); set_text(countdown_, text::clock_empty); set_text(detail_, text::idle_detail);
         }
@@ -354,20 +426,42 @@ class Panel {
             SetWindowTextW(duration_, minutes.c_str()); SetFocus(duration_); SendMessageW(duration_, EM_SETSEL, 0, -1);
         } else if (id == schedule_id) {
             const bool editing = editing_id_ != 0;
-            const bool ok = editing ? book_.edit(editing_id_, selected_action(), duration_text(), clock_sample()) :
-                book_.create(selected_action(), duration_text(), clock_sample());
+            const auto now = clock_sample();
+            const auto action = selected_action();
+            const auto civil = selected_civil();
+            bool ok = false;
+            switch (selected_kind()) {
+                case ScheduleKind::Duration: ok = editing ? book_.edit(editing_id_, action, duration_text(), now) :
+                    book_.create(action, duration_text(), now); break;
+                case ScheduleKind::Once: ok = editing ? book_.edit_once(editing_id_, action, civil, now) :
+                    book_.create_once(action, civil, now); break;
+                case ScheduleKind::Weekly: ok = editing ? book_.edit_weekly(editing_id_, action, selected_days(), civil.hour * 60 + civil.minute, now) :
+                    book_.create_weekly(action, selected_days(), civil.hour * 60 + civil.minute, now); break;
+            }
             if (ok) {
                 selected_id_ = editing ? editing_id_ : book_.list().back().id;
                 editing_id_ = 0;
             }
             show_error(); refresh();
         } else if (id == new_id) {
-            editing_id_ = 0; set_text(error_, L""); refresh(); SetFocus(duration_);
+            editing_id_ = 0; set_text(error_, L""); refresh();
+            SetFocus(selected_kind() == ScheduleKind::Duration ? duration_ : time_);
         } else if (id == edit_id) {
             if (const auto* record = selected_record()) {
                 editing_id_ = record->id;
                 SendMessageW(action_, CB_SETCURSEL, static_cast<WPARAM>(record->action), 0);
-                set_text(duration_, std::to_wstring(record->minutes)); refresh(); SetFocus(duration_);
+                SendMessageW(kind_, CB_SETCURSEL, static_cast<WPARAM>(record->kind), 0);
+                set_text(duration_, std::to_wstring(record->minutes));
+                if (record->kind != ScheduleKind::Duration) {
+                    const auto civil = record->kind == ScheduleKind::Once ? calendar_.local(record->due_utc_ms).value_or(record->civil) : record->civil;
+                    SYSTEMTIME selected{};
+                    selected.wYear = static_cast<WORD>(civil.year); selected.wMonth = static_cast<WORD>(civil.month);
+                    selected.wDay = static_cast<WORD>(civil.day); selected.wHour = static_cast<WORD>(civil.hour); selected.wMinute = static_cast<WORD>(civil.minute);
+                    DateTime_SetSystemtime(date_, GDT_VALID, &selected); DateTime_SetSystemtime(time_, GDT_VALID, &selected);
+                    for (unsigned i = 0; i < 7; ++i) SendMessageW(days_[i], BM_SETCHECK, record->weekdays & (1u << i) ? BST_CHECKED : BST_UNCHECKED, 0);
+                }
+                const auto focus = record->kind == ScheduleKind::Duration ? duration_ : time_;
+                show_kind(); refresh(); SetFocus(focus);
             }
         } else if (id == pause_id || id == erase_id || id == cancel_id) {
             if (const auto* record = selected_record()) {
@@ -378,6 +472,11 @@ class Panel {
                 } else book_.cancel(selected);
                 show_error(); refresh();
             }
+        } else if (id == daily_id) {
+            for (auto day : days_) SendMessageW(day, BM_SETCHECK, BST_CHECKED, 0);
+            preview();
+        } else if (id >= weekday_id && id < weekday_id + 7) {
+            preview();
         } else if (id == open_id || id == settings_id) {
             show(true);
             if (id == settings_id) set_text(error_, text::settings_note);
@@ -432,7 +531,7 @@ class Panel {
         if (draw.itemState & ODS_FOCUS) { InflateRect(&rect, -px(4), -px(4)); DrawFocusRect(draw.hDC, &rect); }
     }
 public:
-    Panel() : storage_(data_file()), book_(storage_) {}
+    Panel() : storage_(data_file()), book_(storage_, calendar_) {}
     ~Panel() {
         if (window_ && IsWindow(window_)) DestroyWindow(window_);
         for (auto font : fonts_) if (font) DeleteObject(font);
@@ -441,7 +540,7 @@ public:
     }
     void show(bool activate) {
         ShowWindow(window_, activate ? SW_RESTORE : SW_SHOWNOACTIVATE);
-        if (activate) { SetForegroundWindow(window_); SetFocus(duration_); }
+        if (activate) { SetForegroundWindow(window_); SetFocus(selected_kind() == ScheduleKind::Duration ? duration_ : time_); }
     }
     void add_tray() {
         last_tray_try_ = GetTickCount64();
@@ -467,7 +566,7 @@ public:
         dpi_ = GetDpiForSystem();
         RECT work{};
         SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-        RECT size{0, 0, px(580), px(778)};
+        RECT size{0, 0, px(580), px(804)};
         constexpr DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
         AdjustWindowRectExForDpi(&size, style, FALSE, WS_EX_CONTROLPARENT, dpi_);
         const int width = size.right - size.left, height = size.bottom - size.top;
@@ -514,10 +613,12 @@ public:
                     self->preview();
                 }
                 else if (LOWORD(wparam) == action_id && HIWORD(wparam) == CBN_SELCHANGE) self->preview();
+                else if (LOWORD(wparam) == kind_id && HIWORD(wparam) == CBN_SELCHANGE) self->show_kind();
                 else if (HIWORD(wparam) == BN_CLICKED) self->command(LOWORD(wparam));
                 return 0;
             case WM_NOTIFY: {
                 const auto* header = reinterpret_cast<NMHDR*>(lparam);
+                if ((header->idFrom == date_id || header->idFrom == time_id) && header->code == DTN_DATETIMECHANGE) self->preview();
                 if (header->idFrom == list_id && header->code == LVN_ITEMCHANGED && !self->rebuilding_list_) {
                     const int row = ListView_GetNextItem(self->list_, -1, LVNI_SELECTED);
                     if (row >= 0 && static_cast<size_t>(row) < self->displayed_ids_.size()) {
@@ -562,7 +663,12 @@ public:
                 SetWindowPos(window, nullptr, rect->left, rect->top, rect->right - rect->left,
                     rect->bottom - rect->top, SWP_NOZORDER | SWP_NOACTIVATE); return 0;
             }
-            case WM_SETTINGCHANGE: self->colors(); return 0;
+            case WM_SETTINGCHANGE:
+                self->colors();
+                if (lparam && (lstrcmpiW(reinterpret_cast<LPCWSTR>(lparam), L"TimeZoneInformation") == 0)) {
+                    self->book_.reconcile(clock_sample()); self->refresh();
+                }
+                return 0;
             case WM_CTLCOLORSTATIC:
                 SetTextColor(reinterpret_cast<HDC>(wparam), self->ink_);
                 SetBkColor(reinterpret_cast<HDC>(wparam), self->bg_);
@@ -602,7 +708,7 @@ inline DWORD WINAPI ui_main(void*) {
         CloseHandle(instance); SetEvent(ready_event); return 0;
     }
     const auto prior_dpi = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    INITCOMMONCONTROLSEX common{sizeof(common), ICC_STANDARD_CLASSES | ICC_LISTVIEW_CLASSES};
+    INITCOMMONCONTROLSEX common{sizeof(common), ICC_STANDARD_CLASSES | ICC_LISTVIEW_CLASSES | ICC_DATE_CLASSES};
     InitCommonControlsEx(&common);
     {
         Panel panel;

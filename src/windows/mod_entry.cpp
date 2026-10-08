@@ -4,7 +4,7 @@
 // @name:pt-BR      Power Timer (Simulação)
 // @description     Schedule simulated power actions from a tray icon. No real power action is performed.
 // @description:pt-BR Agende ações simuladas pelo ícone da barra. Nenhuma ação real de energia é executada.
-// @version         0.2.0
+// @version         0.3.0
 // @author          caikx11
 // @include         windhawk.exe
 // @architecture    x86

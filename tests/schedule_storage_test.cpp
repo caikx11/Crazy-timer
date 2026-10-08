@@ -25,6 +25,91 @@ int main(int argc, char** argv) {
     CHECK(actual.snapshot.records.size() == 1);
     CHECK(actual.snapshot.records.front().due_utc_ms == 901000);
     CHECK(actual.snapshot.records.front().action == Action::Sleep);
+    CHECK(encode_snapshot(expected) ==
+        "POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0\n");
+    {
+        std::ifstream in(file, std::ios::binary);
+        const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        CHECK(saved.starts_with("POWER_TIMER 2\n"));
+    }
+    // A version-1 duration loads with the new fields at their neutral values.
+    const std::string legacy = "POWER_TIMER 1\n2 2 1\n1 1 1 15 901000 0 0\n";
+    const auto migrated = decode_snapshot(legacy);
+    CHECK(migrated.has_value());
+    CHECK(migrated->records.front().kind == ScheduleKind::Duration);
+    CHECK(migrated->records.front().civil == CivilTime{});
+    CHECK(migrated->records.front().weekdays == 0);
+    CHECK(migrated->records.front().minute_of_day == 0);
+    CHECK(migrated->records.front().civil_high_water == 0);
+    CHECK(migrated->records.front().last_occurrence_id == 0);
+    CHECK(migrated->records.front().last_state == OccurrenceState::Scheduled);
+    const auto migrated_data = encode_snapshot(*migrated);
+    CHECK(migrated_data.starts_with("POWER_TIMER 2\n"));
+    const auto migrated_again = decode_snapshot(migrated_data);
+    CHECK(migrated_again.has_value());
+    CHECK(migrated_again->records.front().minutes == 15);
+    const auto legacy_file = fixture / "legacy.pt";
+    {
+        std::ofstream out(legacy_file, std::ios::binary | std::ios::trunc);
+        out << legacy;
+    }
+    FileScheduleStorage legacy_storage(legacy_file.wstring());
+    const auto from_legacy_file = legacy_storage.load();
+    CHECK(from_legacy_file.status == LoadStatus::Loaded);
+    ScheduleBook legacy_book(legacy_storage);
+    CHECK(legacy_book.initialize({1000, 1000}));
+    CHECK(legacy_book.list().front().kind == ScheduleKind::Duration);
+    HANDLE legacy_lock = CreateFileW(legacy_file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    CHECK(legacy_lock != INVALID_HANDLE_VALUE);
+    CHECK(!legacy_book.set_paused(1, true, {1000, 1000}));
+    CHECK(!legacy_book.list().front().paused);
+    {
+        std::ifstream in(legacy_file, std::ios::binary);
+        const std::string preserved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        CHECK(preserved == legacy);
+    }
+    CHECK(CloseHandle(legacy_lock));
+    CHECK(legacy_book.set_paused(1, true, {1000, 1000}));
+    {
+        std::ifstream in(legacy_file, std::ios::binary);
+        const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        CHECK(saved.starts_with("POWER_TIMER 2\n"));
+    }
+    CHECK(legacy_storage.load().status == LoadStatus::Loaded);
+    CHECK(legacy_storage.load().snapshot.records.front().paused);
+    // Civil rules and the last result remain available after replacing the file.
+    ScheduleSnapshot civil_rules{3, 9, {}};
+    ScheduleRecord once{1, 1, Action::Sleep, 0, 1791505800000, false,
+        OccurrenceState::Scheduled};
+    once.kind = ScheduleKind::Once;
+    once.civil = {2026, 10, 8, 21, 30};
+    ScheduleRecord weekly{2, 8, Action::Hibernate, 0, 1791592200000, true,
+        OccurrenceState::Scheduled};
+    weekly.kind = ScheduleKind::Weekly;
+    weekly.civil = {2026, 10, 9, 21, 30};
+    weekly.weekdays = 127;
+    weekly.minute_of_day = 1290;
+    weekly.civil_high_water = 202610082130;
+    weekly.last_occurrence_id = 7;
+    weekly.last_state = OccurrenceState::Expired;
+    civil_rules.records = {once, weekly};
+    const auto civil_file = fixture / "civil.pt";
+    std::filesystem::remove(civil_file);
+    FileScheduleStorage civil_storage(civil_file.wstring());
+    CHECK(civil_storage.save(civil_rules));
+    const auto civil_loaded = FileScheduleStorage(civil_file.wstring()).load();
+    CHECK(civil_loaded.status == LoadStatus::Loaded);
+    CHECK(civil_loaded.snapshot.records.size() == 2);
+    CHECK(civil_loaded.snapshot.records[0].kind == ScheduleKind::Once);
+    CHECK((civil_loaded.snapshot.records[0].civil == CivilTime{2026, 10, 8, 21, 30}));
+    CHECK(civil_loaded.snapshot.records[1].kind == ScheduleKind::Weekly);
+    CHECK((civil_loaded.snapshot.records[1].civil == CivilTime{2026, 10, 9, 21, 30}));
+    CHECK(civil_loaded.snapshot.records[1].weekdays == 127);
+    CHECK(civil_loaded.snapshot.records[1].minute_of_day == 1290);
+    CHECK(civil_loaded.snapshot.records[1].civil_high_water == 202610082130);
+    CHECK(civil_loaded.snapshot.records[1].last_occurrence_id == 7);
+    CHECK(civil_loaded.snapshot.records[1].last_state == OccurrenceState::Expired);
     // A reconciled civil deadline describes remaining time, not the original duration.
     const auto rebased_file = fixture / "rebased.pt";
     std::filesystem::remove(rebased_file);
@@ -41,6 +126,45 @@ int main(int argc, char** argv) {
     CHECK(zero_deadline.status == LoadStatus::Loaded);
     CHECK(zero_deadline.snapshot.records.front().due_utc_ms == 0);
     CHECK(!decode_snapshot("POWER_TIMER 1\n2 2 1\n1 1 1 15 901000 2 0\n"));
+    const std::string canonical_v2 =
+        "POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0\n";
+    CHECK(decode_snapshot(canonical_v2).has_value());
+    const std::string once_v2 =
+        "POWER_TIMER 2\n2 2 1\n1 1 1 0 1791505800000 0 0 1 2026 10 8 21 30 0 0 0 0 0\n";
+    const std::string weekly_v2 =
+        "POWER_TIMER 2\n3 9 1\n2 8 2 0 1791592200000 1 0 2 2026 10 9 21 30 127 1290 202610082130 7 2\n";
+    CHECK(decode_snapshot(once_v2).has_value());
+    CHECK(decode_snapshot(weekly_v2).has_value());
+    CHECK(!decode_snapshot("POWER_TIMER 3\n2 2 0\n"));
+    CHECK(!decode_snapshot("POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0\n"));
+    CHECK(!decode_snapshot(canonical_v2 + "tail"));
+    const std::string v2_record_prefix = "POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0 ";
+    for (const auto invalid_tail : {
+        "3 0 0 0 0 0 0 0 0 0 0\n",               // unknown kind
+        "4294967297 0 0 0 0 0 0 0 0 0 0\n",      // kind exceeds enum width
+        "0 2147483648 0 0 0 0 0 0 0 0 0\n",     // year exceeds int width
+        "0 0 4294967296 0 0 0 0 0 0 0 0\n",     // month exceeds unsigned width
+        "0 0 0 0 0 0 4294967296 0 0 0 0\n",     // weekdays exceeds unsigned width
+        "0 0 0 0 0 0 0 4294967296 0 0 0\n",     // minute exceeds unsigned width
+        "0 0 0 0 0 0 0 0 0 0 5\n",              // unknown last state
+        "0 0 0 0 0 0 0 0 0 0 00\n",             // noncanonical last state
+        "0 0 0 0 0 0 0 0 0 0 0 0\n",            // unknown extra field
+        "0 0 0 0 0 0 0 0 0 0 0\r\n",          // CRLF
+        "0 0 0 0 0 0 0 0 0 0 0"                 // truncation
+    }) CHECK(!decode_snapshot(v2_record_prefix + invalid_tail));
+    const std::string weekly_prefix = "POWER_TIMER 2\n3 9 1\n2 8 2 0 1791592200000 1 0 2 ";
+    for (const auto invalid_rule : {
+        "2026 2 30 21 30 127 1290 0 7 2\n",                 // nonexistent date
+        "2026 10 9 21 30 0 1290 202610082130 7 2\n",       // no selected weekdays
+        "2026 10 9 21 30 127 1289 202610082130 7 2\n",    // time and rule differ
+        "2026 10 9 21 30 127 1290 202610092130 7 2\n",    // consumed current civil time
+        "2026 10 9 21 30 127 1290 202610082130 8 2\n",    // last ID aliases current
+        "2026 10 9 21 30 127 1290 202610082130 7 0\n"     // last result cannot be pending
+    }) CHECK(!decode_snapshot(weekly_prefix + invalid_rule));
+    CHECK(!decode_snapshot(
+        "POWER_TIMER 2\n2 2 1\n1 1 1 0 1791505800000 0 0 1 2026 10 8 21 30 1 0 0 0 0\n"));
+    CHECK(!decode_snapshot(
+        "POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0 0 2026 10 8 21 30 0 0 0 0 0\n"));
     // Corrupt values cannot become runnable records or alias another identity.
     for (const auto invalid : {
         "POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0\n",
@@ -108,6 +232,12 @@ int main(int argc, char** argv) {
     for (std::size_t length = 0; length < canonical.size(); ++length) {
         std::ofstream out(corrupt_file, std::ios::binary | std::ios::trunc);
         out.write(canonical.data(), static_cast<std::streamsize>(length));
+        out.close();
+        CHECK(corrupt.load().status == LoadStatus::Invalid);
+    }
+    for (std::size_t length = 0; length < canonical_v2.size(); ++length) {
+        std::ofstream out(corrupt_file, std::ios::binary | std::ios::trunc);
+        out.write(canonical_v2.data(), static_cast<std::streamsize>(length));
         out.close();
         CHECK(corrupt.load().status == LoadStatus::Invalid);
     }

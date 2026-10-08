@@ -1,6 +1,7 @@
 #include "../src/schedule_book.hpp"
 #include <cstdlib>
 #include <iostream>
+#include <chrono>
 
 using namespace power_timer;
 int checks = 0;
@@ -13,11 +14,279 @@ struct MemoryStorage : ScheduleStorage {
     bool fail_save = false;
     LoadResult load() override { return data; }
     bool save(const ScheduleSnapshot& value) override {
-        if (fail_save) return false;
+        if (fail_save || !valid_snapshot(value)) return false;
         data = {LoadStatus::Loaded, value};
         return true;
     }
 };
+struct TestCalendar : Calendar {
+    int offset_minutes = 0;
+    bool unavailable = false;
+    bool all_gaps = false;
+    std::map<std::uint64_t, std::vector<std::uint64_t>> special;
+    std::optional<CivilTime> local(std::uint64_t utc) const override {
+        using namespace std::chrono;
+        if (unavailable || utc >= 253402300800000ULL) return {};
+        const auto point = sys_time<milliseconds>(milliseconds(utc)) + minutes(offset_minutes);
+        const auto day = floor<days>(point);
+        const year_month_day date(day);
+        const hh_mm_ss time(point - day);
+        CivilTime result{int(date.year()), unsigned(date.month()), unsigned(date.day()),
+            unsigned(time.hours().count()), unsigned(time.minutes().count())};
+        return valid_civil(result) ? std::optional(result) : std::nullopt;
+    }
+    std::optional<std::vector<std::uint64_t>> resolve(CivilTime civil) const override {
+        using namespace std::chrono;
+        if (unavailable || !valid_civil(civil)) return {};
+        if (all_gaps) return std::vector<std::uint64_t>{};
+        const auto found = special.find(civil_key(civil));
+        if (found != special.end()) return found->second;
+        const auto point = sys_days(year(civil.year)/month(civil.month)/day(civil.day)) +
+            hours(civil.hour) + minutes(civil.minute) - minutes(offset_minutes);
+        const auto value = duration_cast<milliseconds>(point.time_since_epoch()).count();
+        if (value < 0) return std::vector<std::uint64_t>{};
+        return std::vector<std::uint64_t>{static_cast<std::uint64_t>(value)};
+    }
+};
+void once_uses_fixed_instant() {
+    MemoryStorage storage;
+    TestCalendar calendar;
+    ScheduleBook book(storage, calendar);
+    check(book.initialize({0, 0}), "initialize calendar book");
+    check(book.preview_once({1970, 1, 1, 0, 1}, {0, 0}) == 60000 && book.list().empty(),
+          "once preview returns future instant without saving");
+    check(book.create_once(Action::Sleep, {1970, 1, 1, 0, 1}, {0, 0}), "create explicit date");
+    calendar.offset_minutes = 60;
+    check(book.reconcile({30000, 30000}) && book.list()[0].due_utc_ms == 60000,
+          "once keeps fixed UTC when timezone changes");
+    const auto delivery = book.tick({65000, 65000});
+    check(delivery.size() == 1 && book.complete(delivery[0]), "once dispatches within tolerance");
+    check(!book.create_once(Action::Sleep, {1970, 1, 1, 0, 1}, {70000, 70000}), "past explicit date rejected");
+}
+void weekly_keeps_rule_after_delivery_and_cancel() {
+    MemoryStorage storage;
+    TestCalendar calendar;
+    ScheduleBook book(storage, calendar);
+    check(book.initialize({0, 0}) && book.preview_weekly(127, 1, {0, 0}) == 60000,
+          "weekly preview finds today's future minute");
+    check(book.create_weekly(Action::Hibernate, 127, 1, {0, 0}), "create daily rule");
+    const auto delivered = book.tick({60000, 60000});
+    check(delivered.size() == 1 && book.list()[0].due_utc_ms == 86460000 &&
+          book.list()[0].state == OccurrenceState::Scheduled &&
+          book.list()[0].last_state == OccurrenceState::Uncertain,
+          "weekly intent consumes today's civil identity and saves tomorrow before delivery");
+    check(book.complete(delivered[0]) && book.list()[0].last_state == OccurrenceState::Completed,
+          "weekly completion preserves next occurrence");
+    check(book.cancel(1) && book.list()[0].due_utc_ms == 172860000 &&
+          book.list()[0].last_state == OccurrenceState::Cancelled && book.list()[0].weekdays == 127,
+          "cancel consumes just next occurrence and keeps recurrence");
+    ScheduleBook restarted(storage, calendar);
+    check(restarted.initialize({0, 0}) && restarted.tick({60000, 60000}).empty() &&
+          restarted.list()[0].due_utc_ms == 172860000, "clock return and restart never resurrect consumed civil dates");
+}
+void calendar_failures_block_effects() {
+    {
+        MemoryStorage storage;
+        TestCalendar calendar;
+        calendar.all_gaps = true;
+        ScheduleBook book(storage,calendar);
+        check(book.initialize({0,0}) && !book.create_weekly(Action::Sleep,127,1,{0,0}) &&
+            book.error() == BookError::Calendar && book.list().empty(),
+            "adapter without any reachable civil time reports unavailable calendar without saving");
+    }
+    for (const bool weekly : {false, true}) {
+        MemoryStorage storage;
+        TestCalendar calendar;
+        ScheduleBook book(storage, calendar);
+        check(book.initialize({0, 0}) && (weekly ? book.create_weekly(Action::Sleep, 127, 1, {0, 0}) :
+            book.create_once(Action::Sleep, {1970, 1, 1, 0, 1}, {0, 0})), "prepare calendar outage");
+        calendar.unavailable = true;
+        check(book.tick({60000, 60000}).empty() && !book.writable() && book.error() == BookError::Calendar,
+              "calendar failure blocks intent instead of delivering or silently skipping rule");
+        calendar.unavailable = false;
+        check(book.initialize({60000, 60000}) && book.tick({60000, 60000}).empty(),
+              "recovery from calendar failure expires missed occurrence");
+    }
+}
+void recurring_calendar_boundaries() {
+    struct Case { std::uint64_t now, expected; unsigned mask, minute; CivilTime civil; };
+    // Known UTC dates: 2023-12-31 Sunday, 2024-01-31 Wednesday, leap day Thursday.
+    const Case cases[] = {
+        {1704067140000ULL, 1704067200000ULL, 127, 0, {2024,1,1,0,0}},
+        {1706745540000ULL, 1706745600000ULL, 127, 0, {2024,2,1,0,0}},
+        {1709164740000ULL, 1709164800000ULL, 127, 0, {2024,2,29,0,0}},
+        {1709251140000ULL, 1709251200000ULL, 127, 0, {2024,3,1,0,0}},
+        {1704067200000ULL, 1704672000000ULL, 2, 0, {2024,1,8,0,0}},
+        {1704499200000ULL, 1704672000000ULL, 62, 0, {2024,1,8,0,0}}
+    };
+    for (const auto& item : cases) {
+        MemoryStorage storage;
+        TestCalendar calendar;
+        ScheduleBook book(storage, calendar);
+        check(book.initialize({item.now, 0}) && book.create_weekly(Action::Sleep, item.mask, item.minute, {item.now, 0}),
+              "create weekly across calendar boundary");
+        check(book.list()[0].due_utc_ms == item.expected && book.list()[0].civil == item.civil,
+              "day/week/month/leap-year/year boundary selects correct next date");
+    }
+}
+void gaps_and_folds_are_consumed_only_once() {
+    MemoryStorage storage;
+    TestCalendar calendar;
+    calendar.special[197001010001ULL] = {};
+    ScheduleBook book(storage, calendar);
+    check(book.initialize({0, 0}) && !book.create_once(Action::Sleep, {1970,1,1,0,1}, {0,0}) &&
+          book.error() == BookError::InvalidInput, "nonexistent once time is rejected");
+    check(book.create_weekly(Action::Sleep, 127, 1, {0,0}) && book.list()[0].due_utc_ms == 86460000 &&
+          book.list()[0].civil_high_water == 197001010001ULL, "weekly skips nonexistent time and records skipped identity");
+    calendar.special.clear();
+    check(book.reconcile({0,0}) && book.list()[0].due_utc_ms == 86460000,
+          "timezone return cannot revive a skipped civil time");
+    calendar.special[197001010002ULL] = {120000, 3720000};
+    check(book.edit_once(1, Action::Sleep, {1970,1,1,0,2}, {0,0}) && book.list()[0].due_utc_ms == 120000,
+          "ambiguous once resolves only earliest instant");
+    check(!book.create_once(Action::Sleep, {1970,1,1,0,2}, {120001,0}),
+          "second fold cannot turn a past once selection into future");
+    check(book.edit_weekly(1, Action::Hibernate, 127, 2, {0,0}), "edit to folded weekly time");
+    const auto delivered = book.tick({120000,120000});
+    check(delivered.size() == 1 && book.tick({3720000,3720000}).empty() &&
+          book.list()[0].due_utc_ms == 86520000, "second fold never repeats the civil occurrence");
+    ScheduleBook restarted(storage, calendar);
+    check(restarted.initialize({0,0}) && restarted.list()[0].last_state == OccurrenceState::Uncertain &&
+          restarted.tick({120000,120000}).empty(), "uncertain folded result survives restart without resending");
+}
+void weekly_clock_changes_and_pauses() {
+    MemoryStorage storage;
+    TestCalendar calendar;
+    ScheduleBook book(storage, calendar);
+    check(book.initialize({0,0}) && book.create_weekly(Action::Sleep, 127, 120, {0,0}), "prepare timezone change");
+    calendar.offset_minutes = 180;
+    check(book.reconcile({0,0}) && book.list()[0].due_utc_ms == 82800000 &&
+          book.list()[0].last_state == OccurrenceState::Expired, "timezone advance expires skipped local occurrence");
+    calendar.offset_minutes = 0;
+    check(book.reconcile({0,0}) && book.list()[0].due_utc_ms == 93600000,
+          "timezone return keeps consumed date suppressed and recalculates next instant");
+    check(book.set_paused(1,true,{0,0}) && book.tick({93600000,93600000}).empty() &&
+          book.list()[0].last_state == OccurrenceState::Expired && book.list()[0].due_utc_ms == 180000000,
+          "paused weekly occurrence expires while recurrence advances");
+    check(book.set_paused(1,false,{180000001,180000001}) && book.list()[0].due_utc_ms == 266400000 &&
+          book.tick({180000001,180000001}).empty(), "reactivation expires missed weekly occurrence without delivery");
+    check(book.reconcile({900000000,900000000}) && book.list()[0].due_utc_ms == 957600000,
+          "large forward clock change advances directly to next valid date");
+    ScheduleBook restarted(storage,calendar);
+    check(restarted.initialize({0,0}) && restarted.list()[0].due_utc_ms == 957600000,
+          "persistent high water prevents replay after large clock rollback");
+}
+void recurring_failures_are_transactional() {
+    MemoryStorage storage;
+    TestCalendar calendar;
+    ScheduleBook book(storage, calendar);
+    check(book.initialize({0,0}) && book.create_weekly(Action::Sleep,127,1,{0,0}), "prepare transactional weekly");
+    storage.fail_save = true;
+    check(!book.edit_weekly(1,Action::Shutdown,62,3,{0,0}) && !book.cancel(1) &&
+          !book.set_paused(1,true,{0,0}) && book.list()[0].weekdays == 127 &&
+          book.list()[0].occurrence_id == 1 && !book.list()[0].paused, "failed weekly commands preserve all saved rule fields");
+    check(book.tick({60000,60000}).empty() && !book.writable() && book.list()[0].last_occurrence_id == 0 &&
+          book.list()[0].due_utc_ms == 60000, "failed weekly intent never advances memory or emits action");
+    storage.fail_save = false;
+    check(book.initialize({60000,0}) && book.list()[0].last_state == OccurrenceState::Expired &&
+          book.list()[0].due_utc_ms == 86460000, "recovery expires failed intent and preserves next rule");
+    const auto delivery = book.tick({86460000,86400000});
+    check(delivery.size() == 1, "next occurrence remains deliverable after failed intent");
+    storage.fail_save = true;
+    check(!book.complete(delivery[0]) && !book.writable() && book.list()[0].last_state == OccurrenceState::Uncertain,
+          "failed weekly completion retains uncertain result");
+    storage.fail_save = false;
+    ScheduleBook restarted(storage,calendar);
+    check(restarted.initialize({86460001,0}) && restarted.list()[0].last_state == OccurrenceState::Uncertain &&
+          restarted.list()[0].due_utc_ms == 172860000 && restarted.tick({86460001,0}).empty(),
+          "restart preserves uncertain history and schedules next date without retry");
+}
+void calendar_validation_and_limit_failures() {
+    MemoryStorage storage;
+    TestCalendar calendar;
+    ScheduleBook book(storage,calendar);
+    check(book.initialize({0,0}) && book.create_weekly(Action::Sleep,127,1,{0,0}), "prepare calendar validation");
+    for (const auto civil : {CivilTime{1969,12,31,23,59}, CivilTime{10000,1,1,0,0},
+         CivilTime{2025,2,29,0,0}, CivilTime{2024,2,30,0,0}, CivilTime{2024,1,1,24,0}, CivilTime{2024,1,1,0,60}})
+        check(!book.create_once(Action::Sleep,civil,{0,0}) && !book.edit_once(1,Action::Sleep,civil,{0,0}) &&
+            book.error() == BookError::InvalidInput && book.list()[0].occurrence_id == 1,
+            "invalid civil date never replaces saved occurrence");
+    for (const auto mask : {0U,128U,255U})
+        check(!book.create_weekly(Action::Sleep,mask,1,{0,0}) && !book.edit_weekly(1,Action::Sleep,mask,1,{0,0}),
+              "invalid weekday mask rejected");
+    check(!book.create_weekly(Action::Sleep,127,1440,{0,0}) &&
+          !book.create_weekly(static_cast<Action>(999),127,1,{0,0}) &&
+          !book.create_once(static_cast<Action>(999),{1970,1,1,0,1},{0,0}), "invalid time/action rejected");
+    check(!book.edit_once(99,Action::Sleep,{1970,1,1,0,1},{0,0}) && book.error() == BookError::NotFound &&
+          !book.edit_weekly(99,Action::Sleep,127,1,{0,0}) && book.error() == BookError::NotFound,
+          "missing calendar edit does not create a schedule");
+    check(!book.preview_weekly(127,0,{253402300740000ULL,0}) &&
+          !book.create_weekly(Action::Sleep,127,0,{253402300740000ULL,0}), "end of supported calendar cannot wrap to year 10000");
+    check(!book.preview_once({9999,12,31,23,59},{253402300800000ULL,0}), "out of range current epoch rejected");
+    auto valid = storage.data;
+    for (int corruption = 0; corruption < 11; ++corruption) {
+        storage.data = valid;
+        auto& row = storage.data.snapshot.records[0];
+        switch (corruption) {
+        case 0: row.kind = static_cast<ScheduleKind>(99); break;
+        case 1: row.weekdays = 0; break;
+        case 2: row.minute_of_day = 1440; break;
+        case 3: row.civil = {2025,2,29,0,1}; break;
+        case 4: row.civil_high_water = civil_key(row.civil); break;
+        case 5: row.last_occurrence_id = row.occurrence_id; break;
+        case 6: row.last_state = OccurrenceState::Uncertain; break;
+        case 7: row.minutes = 1; break;
+        case 8: row.due_utc_ms = 253402300800000ULL; break;
+        case 9: row.state = OccurrenceState::Completed; break;
+        case 10: row.civil_high_water = 0; break;
+        }
+        ScheduleBook damaged(storage,calendar);
+        check(!damaged.initialize({0,0}) && damaged.error() == BookError::InvalidData && damaged.list().empty(),
+              "malformed calendar snapshot blocks recovery without overwriting");
+    }
+    storage.data = valid;
+    storage.data.snapshot.next_occurrence_id = std::numeric_limits<std::uint64_t>::max();
+    ScheduleBook exhausted(storage,calendar);
+    check(exhausted.initialize({0,0}) && !exhausted.cancel(1) && exhausted.writable() &&
+          exhausted.list()[0].occurrence_id == 1, "exhausted occurrence counter rejects cancellation transactionally");
+    check(exhausted.tick({60000,60000}).empty() && !exhausted.writable() && exhausted.list()[0].last_occurrence_id == 0,
+          "exhausted occurrence counter blocks delivery without wrapping");
+    ScheduleBook no_calendar(storage);
+    check(!no_calendar.initialize({0,0}) && no_calendar.error() == BookError::Calendar,
+          "calendar records cannot silently run without calendar dependency");
+}
+void editing_modes_and_recovery_tolerance() {
+    for (const bool weekly : {false,true}) {
+        for (const auto delay : {0ULL,5000ULL,5001ULL}) {
+            MemoryStorage storage;
+            TestCalendar calendar;
+            ScheduleBook book(storage,calendar);
+            check(book.initialize({0,0}) && (weekly ? book.create_weekly(Action::Sleep,127,1,{0,0}) :
+                book.create_once(Action::Sleep,{1970,1,1,0,1},{0,0})), "prepare civil dispatch boundary");
+            const auto delivered = book.tick({60000+delay,60000+delay});
+            check(delivered.size() == (delay <= 5000 ? 1U : 0U), "civil dispatch tolerates 5000 ms but expires 5001 ms");
+            if (weekly) check(book.list()[0].due_utc_ms == 86460000, "late civil dispatch preserves weekly continuation");
+        }
+        MemoryStorage storage;
+        TestCalendar calendar;
+        ScheduleBook book(storage,calendar);
+        check(book.initialize({0,0}) && (weekly ? book.create_weekly(Action::Sleep,127,1,{0,0}) :
+              book.create_once(Action::Sleep,{1970,1,1,0,1},{0,0})), "prepare civil recovery boundary");
+        ScheduleBook reopened(storage,calendar);
+        check(reopened.initialize({60000,0}) && reopened.tick({60000,0}).empty(),
+              "startup at civil deadline expires even inside dispatch tolerance");
+        check(book.reconcile({60000,60000}) && book.tick({60000,60000}).empty(),
+              "explicit resume at civil deadline expires without delivery");
+        check(book.set_paused(1,true,{60000,60000}) && book.edit(1,Action::Shutdown,L"1",{60000,60000}) &&
+              book.list()[0].kind == ScheduleKind::Duration && book.list()[0].last_occurrence_id == 0 && book.list()[0].paused,
+              "editing civil rule to duration resets recurrence metadata and keeps pause");
+        check(book.edit_once(1,Action::Sleep,{1970,1,1,0,3},{60000,60000}) &&
+              book.list()[0].kind == ScheduleKind::Once && book.list()[0].paused,
+              "editing duration to once keeps pause and replaces monotonic deadline");
+        check(book.edit_weekly(1,Action::Sleep,127,1,{0,0}) && book.list()[0].due_utc_ms == 60000,
+              "explicit weekly edit resets high water to create fresh rule identity");
+    }
+}
 void create_and_restore() {
     MemoryStorage storage;
     ScheduleBook book(storage);
@@ -315,7 +584,26 @@ void civil_clock_checkpoint_survives_restart() {
           reopened.error() == BookError::InvalidData && reopened.list()[0].due_utc_ms == 390000,
           "unrepresentable civil anchor fails closed without altering saved deadline");
 }
+void dispatch_tolerance() {
+    for (const auto delay : {5000ULL, 5001ULL}) {
+        MemoryStorage storage;
+        ScheduleBook book(storage);
+        check(book.initialize({0, 0}) && book.create(Action::Sleep, L"1", {0, 0}), "prepare dispatch tolerance");
+        check(book.tick({60000 + delay, 60000 + delay}).size() == (delay == 5000 ? 1U : 0U),
+              "normal dispatch tolerates exactly five seconds, never more");
+    }
+}
 int main() {
+    calendar_validation_and_limit_failures();
+    editing_modes_and_recovery_tolerance();
+    recurring_calendar_boundaries();
+    gaps_and_folds_are_consumed_only_once();
+    weekly_clock_changes_and_pauses();
+    recurring_failures_are_transactional();
+    calendar_failures_block_effects();
+    weekly_keeps_rule_after_delivery_and_cancel();
+    once_uses_fixed_instant();
+    dispatch_tolerance();
     create_and_restore();
     manage_list_transactionally();
     recover_and_deliver_once();

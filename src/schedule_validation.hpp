@@ -10,6 +10,10 @@ inline constexpr std::size_t max_schedule_records = 1000;
 inline bool valid_action(Action action) {
     return action == Action::Shutdown || action == Action::Sleep || action == Action::Hibernate;
 }
+inline bool valid_occurrence_state(OccurrenceState state) {
+    return state == OccurrenceState::Scheduled || state == OccurrenceState::Cancelled ||
+        state == OccurrenceState::Expired || state == OccurrenceState::Uncertain || state == OccurrenceState::Completed;
+}
 
 inline bool valid_snapshot(const ScheduleSnapshot& snapshot) {
     if (snapshot.next_id == 0 || snapshot.next_occurrence_id == 0 ||
@@ -19,10 +23,28 @@ inline bool valid_snapshot(const ScheduleSnapshot& snapshot) {
         if (record.id == 0 || record.id >= snapshot.next_id || record.occurrence_id == 0 ||
             record.occurrence_id >= snapshot.next_occurrence_id || !ids.insert(record.id).second ||
             !occurrences.insert(record.occurrence_id).second || !valid_action(record.action) ||
-            record.minutes < Scheduler::min_minutes || record.minutes > Scheduler::max_minutes ||
-            (record.state != OccurrenceState::Scheduled && record.state != OccurrenceState::Cancelled &&
-             record.state != OccurrenceState::Expired && record.state != OccurrenceState::Uncertain &&
-             record.state != OccurrenceState::Completed)) return false;
+            !valid_occurrence_state(record.state) || !valid_occurrence_state(record.last_state)) return false;
+        if (record.kind == ScheduleKind::Duration) {
+            if (record.minutes < Scheduler::min_minutes || record.minutes > Scheduler::max_minutes ||
+                !(record.civil == CivilTime{})) return false;
+        } else if (record.kind == ScheduleKind::Once || record.kind == ScheduleKind::Weekly) {
+            if (record.minutes != 0 || !valid_civil(record.civil) || record.due_utc_ms >= 253402300800000ULL)
+                return false;
+        } else return false;
+        if (record.kind == ScheduleKind::Weekly) {
+            if (!record.weekdays || record.weekdays > 127 || record.minute_of_day >= 1440 ||
+                record.civil.hour * 60 + record.civil.minute != record.minute_of_day ||
+                !(record.weekdays & (1U << weekday(record.civil))) ||
+                record.state != OccurrenceState::Scheduled ||
+                !civil_from_key(record.civil_high_water) ||
+                record.civil_high_water >= civil_key(record.civil)) return false;
+            if (record.last_occurrence_id) {
+                if (record.last_occurrence_id >= record.occurrence_id ||
+                    !occurrences.insert(record.last_occurrence_id).second ||
+                    record.last_state == OccurrenceState::Scheduled) return false;
+            } else if (record.last_state != OccurrenceState::Scheduled) return false;
+        } else if (record.weekdays || record.minute_of_day || record.civil_high_water ||
+                   record.last_occurrence_id || record.last_state != OccurrenceState::Scheduled) return false;
     }
     return true;
 }
