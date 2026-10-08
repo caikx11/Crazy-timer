@@ -1,6 +1,6 @@
 # ADR 004 — Horários e repetições locais
 
-Data: 08/10/2026. Status: implementação sob revisão na tarefa 04.
+Data: 08/10/2026. Status: implementado e revisado na tarefa 04, em simulação.
 
 ## Política
 
@@ -17,6 +17,8 @@ POWER_TIMER 2 acrescenta modalidade, calendário, dias selecionados, limite civi
 ## Adaptador Windows
 
 Calendar separa o núcleo das APIs de fuso. O adaptador obtém o fuso atual e os deslocamentos padrão/verão para o ano; converte candidatos UTC de volta para hora local, descartando candidatos inconsistentes. Isso distingue hora inexistente de hora ambígua. UTC e conversões têm limite 1970–9999. Falha do adaptador é diferente de um horário inexistente.
+
+A procura da próxima data limita-se a 366 dias, bem além de uma semana e dos saltos usuais; um adaptador incoerente que não retorna data válida produz erro Calendar em vez de bloquear o painel por tempo indefinido. A busca é testada com adaptador controlado.
 
 As APIs e seus limites foram conferidos na documentação Microsoft: [fuso dinâmico](https://learn.microsoft.com/en-us/windows/win32/api/timezoneapi/nf-timezoneapi-getdynamictimezoneinformation), [regras anuais](https://learn.microsoft.com/en-us/windows/win32/api/timezoneapi/nf-timezoneapi-gettimezoneinformationforyear), [UTC para local](https://learn.microsoft.com/en-us/windows/win32/api/timezoneapi/nf-timezoneapi-systemtimetotzspecificlocaltimeex). Para fixtures com fuso explícito sem chave do registro, usa-se a conversão com regras fixas, com ressalva documentada para certas viradas de ano com mudanças históricas de deslocamento. O fuso ativo com chave usa a API dinâmica. Testes não alteram o fuso do computador.
 

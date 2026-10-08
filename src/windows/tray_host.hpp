@@ -633,10 +633,12 @@ public:
             case WM_TIMER: if (wparam == timer_id) self->refresh(); return 0;
             case WM_POWERBROADCAST:
                 if (wparam == PBT_APMRESUMEAUTOMATIC || wparam == PBT_APMRESUMESUSPEND) {
+                    self->list_signature_.clear();
                     self->book_.reconcile(clock_sample()); self->refresh();
                 }
                 return TRUE;
             case WM_TIMECHANGE:
+                self->list_signature_.clear();
                 self->book_.reconcile(clock_sample()); self->refresh(); return 0;
             case tray_message:
                 switch (LOWORD(lparam)) {
@@ -666,6 +668,7 @@ public:
             case WM_SETTINGCHANGE:
                 self->colors();
                 if (lparam && (lstrcmpiW(reinterpret_cast<LPCWSTR>(lparam), L"TimeZoneInformation") == 0)) {
+                    self->list_signature_.clear();
                     self->book_.reconcile(clock_sample()); self->refresh();
                 }
                 return 0;

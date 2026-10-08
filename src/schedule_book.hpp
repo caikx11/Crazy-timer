@@ -112,20 +112,14 @@ public:
         auto candidate = snapshot_;
         auto record = find(candidate, delivery.id);
         if (record == candidate.records.end()) return fail(BookError::NotFound);
-        if (record->kind == ScheduleKind::Weekly) {
-            if (record->last_occurrence_id != delivery.occurrence_id || record->action != delivery.action ||
-                (record->last_state != OccurrenceState::Uncertain && record->last_state != OccurrenceState::Completed))
-                return fail(BookError::InvalidInput);
-            if (record->last_state == OccurrenceState::Completed) { error_ = BookError::None; return true; }
-            record->last_state = OccurrenceState::Completed;
-            if (!commit(candidate)) { ready_ = false; return false; }
-            return true;
-        }
-        if (record->occurrence_id != delivery.occurrence_id || record->action != delivery.action ||
-            (record->state != OccurrenceState::Uncertain && record->state != OccurrenceState::Completed))
+        const bool weekly = record->kind == ScheduleKind::Weekly;
+        const auto occurrence_id = weekly ? record->last_occurrence_id : record->occurrence_id;
+        auto& result = weekly ? record->last_state : record->state;
+        if (occurrence_id != delivery.occurrence_id || record->action != delivery.action ||
+            (result != OccurrenceState::Uncertain && result != OccurrenceState::Completed))
             return fail(BookError::InvalidInput);
-        if (record->state == OccurrenceState::Completed) { error_ = BookError::None; return true; }
-        record->state = OccurrenceState::Completed;
+        if (result == OccurrenceState::Completed) { error_ = BookError::None; return true; }
+        result = OccurrenceState::Completed;
         if (!commit(candidate)) { ready_ = false; return false; }
         return true;
     }

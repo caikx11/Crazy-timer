@@ -2,13 +2,14 @@
 
 Agendador minimalista de desligamento, suspensão e hibernação para Windhawk, em desenvolvimento.
 
-A prévia local permite manter vários agendamentos de 1 minuto a 7 dias, editar, pausar, reativar, cancelar e excluir. A lista e os prazos são recuperados ao reabrir. **Esta versão funciona exclusivamente em simulação.** Nenhuma ação de energia real é executada.
+A prévia local permite programar por duração de 1 minuto a 7 dias, data e hora explícitas ou repetição nos dias da semana. É possível manter vários agendamentos, editar, pausar, reativar, cancelar uma ocorrência e excluir. A lista e os prazos são recuperados ao reabrir. **Esta versão funciona exclusivamente em simulação.** Nenhuma ação de energia real é executada.
 
-![Lista real de agendamentos recuperados na prévia](docs/screenshots/task03-list.png)
+![Formulário semanal e lista recuperada na prévia](docs/screenshots/task04-calendar.png)
 
-As três suítes verificam o agendador, a recuperação e o armazenamento, incluindo falhas de gravação e prevenção de reenvio. Preview e DLL x86 compilam. A integração da versão 0.1.0 no Windhawk 1.7.3 foi validada localmente, incluindo bandeja e recuperação do Explorer. A lista persistente da versão 0.2.0 foi validada no preview; a atualização da instalação no Windhawk ainda está pendente.
+As quatro suítes verificam agendamento, recuperação, armazenamento e calendário, incluindo falhas de gravação, migração dos dados e prevenção de reenvio. Preview e DLL x86 compilam. A integração da versão 0.1.0 no Windhawk 1.7.3 foi validada localmente, incluindo bandeja e recuperação do Explorer. As funcionalidades da versão 0.3.0 foram validadas no preview e por testes; a atualização da instalação no Windhawk ainda está pendente.
 
-- [Validação e limitações atuais](docs/validation/task-03.md)
+- [Validação e limitações atuais](docs/validation/task-04.md)
+- [Políticas de calendário e recuperação](docs/adr/004-calendario-recorrencias.md)
 - [Integração anterior com Windhawk](docs/validation/task-02.md)
 - [Preparação e instalação local](docs/installation-local.md)
 - [Especificação vigente](.scratch/power-timer-v1/spec.md)
