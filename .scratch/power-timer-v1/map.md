@@ -4,9 +4,9 @@ Divisão aprovada pelo usuário em 08/10/2026. to-tickets concluída. [Especific
 
 ## Execução
 
-Tarefa 01 resolved: critérios técnicos validados, revisão em dois eixos sem achados e retrospectiva registrada. Tarefa 02 resolved: integração local Windhawk validada e aceita em revisão incremental. Tarefa03disponível. Iniciar uma tarefa apenas quando suas dependências estiverem resolved. Os tickets individuais são a fonte de verdade.
+Tarefas 01 e 02 resolved, incluindo integração local Windhawk da versão 0.1.0. Tarefa 03 resolved em simulação: lista persistente validada no preview/API, revisão concluída; atualização Windhawk 0.2.0 pendente. Iniciar uma tarefa apenas quando suas dependências estiverem resolved. Os tickets individuais são a fonte de verdade.
 
-As tarefas 04, 06, 10 e 11 ficam disponíveis após 03; coordenar alterações em arquivos compartilhados. Tarefa03pode iniciar após o encerramento de02. Na criação, todas tinham Status: ready-for-agent, o que não elimina bloqueios por dependências.
+As tarefas 04, 06, 10 e 11 estão disponíveis; coordenar alterações em arquivos compartilhados. Na criação, todas tinham Status: ready-for-agent, o que não elimina bloqueios por dependências.
 
 | Nº | Tarefa | Bloqueada por | Estado na criação |
 |---|---|---|---|

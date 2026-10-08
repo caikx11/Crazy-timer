@@ -1,9 +1,8 @@
 #pragma once
 
-#include "schedule_types.hpp"
+#include "schedule_validation.hpp"
 #include <map>
 #include <algorithm>
-#include <set>
 
 namespace power_timer {
 
@@ -100,7 +99,7 @@ public:
         if (!ready_) return false;
         const auto minutes = Scheduler::parse_duration(text);
         if (!minutes || !valid_action(action) || !valid_deadline(now, *minutes) ||
-            snapshot_.records.size() >= 1000 || snapshot_.next_id == maximum ||
+            snapshot_.records.size() >= max_schedule_records || snapshot_.next_id == maximum ||
             snapshot_.next_occurrence_id == maximum) return fail(BookError::InvalidInput);
         auto candidate = snapshot_;
         const auto id = candidate.next_id++;
@@ -179,28 +178,6 @@ private:
     static bool valid_deadline(ClockSample now, std::uint64_t minutes) {
         return now.utc_ms <= maximum - minutes * 60000 &&
                now.monotonic_ms <= maximum - minutes * 60000;
-    }
-    static bool valid_action(Action action) {
-        return action == Action::Shutdown || action == Action::Sleep || action == Action::Hibernate;
-    }
-    static bool valid_snapshot(const ScheduleSnapshot& snapshot) {
-        if (!snapshot.next_id || !snapshot.next_occurrence_id || snapshot.records.size() > 1000)
-            return false;
-        std::set<std::uint64_t> ids, occurrences;
-        for (const auto& record : snapshot.records) {
-            if (!record.id || record.id >= snapshot.next_id || !ids.insert(record.id).second ||
-                !record.occurrence_id || record.occurrence_id >= snapshot.next_occurrence_id ||
-                !occurrences.insert(record.occurrence_id).second || !valid_action(record.action) ||
-                record.minutes < 1 || record.minutes > 10080)
-                return false;
-            switch (record.state) {
-            case OccurrenceState::Scheduled: case OccurrenceState::Cancelled:
-            case OccurrenceState::Expired: case OccurrenceState::Uncertain:
-            case OccurrenceState::Completed: break;
-            default: return false;
-            }
-        }
-        return true;
     }
     static std::vector<ScheduleRecord>::iterator find(ScheduleSnapshot& snapshot, std::uint64_t id) {
         return std::find_if(snapshot.records.begin(), snapshot.records.end(),

@@ -307,8 +307,10 @@ class Panel {
             if (!recorded) show_error();
             notify(recorded ? text::completed : text::state_uncertain,
                 recorded ? text::completed_detail : text::uncertain_detail);
+            if (!recorded) break;
         }
         for (const auto& record : book_.list()) {
+            if (!book_.writable()) break;
             if (record.state == OccurrenceState::Scheduled && !record.paused &&
                 book_.remaining_ms(record.id, now) <= Scheduler::warning_ms &&
                 warned_.insert(record.occurrence_id).second) {

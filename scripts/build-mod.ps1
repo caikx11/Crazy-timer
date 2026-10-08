@@ -14,7 +14,7 @@ $source = Join-Path $output 'power-timer-simulation.wh.cpp'
 $binary = Join-Path $output 'power-timer-simulation.dll'
 # The editor compiles stdin: embed our files in dependency order, then the
 # official stable launcher verbatim. System includes remain intact.
-$parts = @('src/scheduler.hpp', 'src/schedule_types.hpp', 'src/schedule_codec.hpp', 'src/schedule_book.hpp', 'src/strings.hpp', 'src/windows/schedule_file.hpp', 'src/windows/tray_host.hpp', 'src/windows/mod_entry.cpp')
+$parts = @('src/scheduler.hpp', 'src/schedule_types.hpp', 'src/schedule_validation.hpp', 'src/schedule_codec.hpp', 'src/schedule_book.hpp', 'src/strings.hpp', 'src/windows/schedule_file.hpp', 'src/windows/tray_host.hpp', 'src/windows/mod_entry.cpp')
 $builder = [Text.StringBuilder]::new()
 foreach ($part in $parts) {
     $content = [IO.File]::ReadAllText((Join-Path $projectRoot $part))

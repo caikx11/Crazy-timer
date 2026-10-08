@@ -25,6 +25,6 @@ Via Computer Use, no preview compartilhando o mesmo host da nova versão:
 
 ## Limites e próximos passos
 
-A nova DLL/fonte0.2.0 compila; a versão instalada no Windhawk ainda é0.1.0 da tarefa02. Não confundir a prova do preview com atualização da instalação. Verificação da0.2.0 no editor será tentada via Computer Use após revisão.
+A nova DLL/fonte 0.2.0 compila; a versão instalada no Windhawk ainda é 0.1.0 da tarefa 02. Não confundir a prova do preview com atualização da instalação. Nova tentativa via Computer Use observou o editor elevado, mas clique no código e Ctrl+Home não mudaram foco, posição ou conteúdo. A atualização depende de interação do usuário com esse editor; não houve alteração da instalação.
 
 Formato e relógio documentados em docs/adr/003-persistencia-duracoes.md. Não foi testado corte físico de energia. Falha entre alteração do relógio civil e checkpoint pode restaurar o últimoUTC persistido. Sessões simultâneas/Windows10e11 permanecem na matriz12.

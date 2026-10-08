@@ -1,6 +1,6 @@
 # ADR 003 — Durações persistentes em simulação
 
-Status: implementado na tarefa03, sujeito à revisão.
+Status: implementado e revisado na tarefa 03, em simulação.
 
 ## Decisão
 
@@ -12,7 +12,7 @@ Antes de retornar uma intenção, tick grava Uncertain. Após entrega simulada, 
 
 ## Arquivo
 
-Formato ASCII textual estrito, cabeçalho POWER_TIMER1, contadores monotônicos e registros. Limites1000registros/1MiB; versão desconhecida e campos inválidos são rejeitados. Windows grava temporário exclusivo no mesmo diretório, faz FlushFileBuffers, fecha e substitui com MoveFileExW(REPLACE_EXISTING|WRITE_THROUGH). Não promove temporários órfãos automaticamente.
+Formato ASCII textual estrito, cabeçalho `POWER_TIMER 1`, contadores monotônicos e registros. Limites de 1000 registros e 1 MiB; versão desconhecida e campos inválidos são rejeitados. A validação do snapshot é compartilhada entre Book e codec em schedule_validation.hpp. Windows grava temporário exclusivo no mesmo diretório, faz FlushFileBuffers, fecha e substitui com MoveFileExW(REPLACE_EXISTING|WRITE_THROUGH). Não promove temporários órfãos automaticamente.
 
 Destino por usuário: %LOCALAPPDATA%/PowerTimer/schedules-v1.dat. Preview usa preview-v1.dat separado. Os dados da versão0.1.0 existiam só em memória; não há migração de arquivo antigo nesta entrega.
 
