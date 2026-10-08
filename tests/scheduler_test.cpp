@@ -11,6 +11,61 @@ static unsigned checks = 0;
     std::exit(EXIT_FAILURE); } } while (false)
 
 int main() {
+    // The UI previews and confirms a duration through the scheduler's public seam.
+    Scheduler duration_timer;
+    CHECK(Scheduler::parse_duration(L"15") == 15);
+    CHECK(duration_timer.schedule_text(Action::Sleep, L"15", 1000));
+    CHECK(duration_timer.deadline_ms() == 901000);
+    CHECK(duration_timer.tick(901000) == Action::Sleep);
+    CHECK(!duration_timer.tick(901000));
+
+    // Invalid duration text preserves the previously confirmed occurrence.
+    CHECK(duration_timer.schedule_text(Action::Hibernate, L"2", 10));
+    for (const auto invalid : {L"", L" ", L" \t\r\n\v\f", L"0", L"0000", L"10081",
+                               L"+15", L"-15", L"1.5", L"15min", L"1 5",
+                               L"18446744073709551616", L"18446744073709551631",
+                               L"9999999999999999999999999999999999999999",
+                               L"\u00a015\u00a0", L"\uff11\uff15"}) {
+        CHECK(!Scheduler::parse_duration(invalid));
+        CHECK(!duration_timer.schedule_text(Action::Shutdown, invalid, 0));
+        CHECK(duration_timer.deadline_ms() == 120010);
+        CHECK(duration_timer.action() == Action::Hibernate);
+        CHECK(duration_timer.state() == State::Scheduled);
+    }
+    CHECK(duration_timer.tick(120010) == Action::Hibernate);
+    CHECK(!duration_timer.tick(120010));
+
+    // ASCII whitespace outside the integer and leading zeroes are accepted.
+    CHECK(Scheduler::parse_duration(L"1") == 1);
+    CHECK(Scheduler::parse_duration(L"10080") == 10080);
+    CHECK(Scheduler::parse_duration(L" \t\r\n\v\f0001\f\v\n\r\t ") == 1);
+    CHECK(Scheduler::parse_duration(L"0000000000000000000000000000000010080") == 10080);
+    CHECK(duration_timer.schedule_text(Action::Shutdown, L" 0010080 ", 0));
+    CHECK(duration_timer.deadline_ms() == 604800000);
+    CHECK(duration_timer.tick(604800000) == Action::Shutdown);
+    CHECK(!duration_timer.tick(604800000));
+
+    // Text confirmation also preserves the occurrence on invalid action or deadline overflow.
+    CHECK(duration_timer.schedule_text(Action::Hibernate, L"2", 10));
+    CHECK(!duration_timer.schedule_text(static_cast<Action>(99), L"1", 0));
+    CHECK(!duration_timer.schedule_text(Action::Shutdown, L"1",
+                                        std::numeric_limits<std::uint64_t>::max() - 59999));
+    CHECK(duration_timer.deadline_ms() == 120010);
+    CHECK(duration_timer.action() == Action::Hibernate);
+    CHECK(duration_timer.state() == State::Scheduled);
+    CHECK(duration_timer.tick(120010) == Action::Hibernate);
+
+    // Cancelling the confirmed occurrence at the last millisecond prevents the request.
+    CHECK(duration_timer.schedule_text(Action::Sleep, L"1", 0));
+    CHECK(duration_timer.deadline_ms() == 60000);
+    CHECK(duration_timer.state() == State::Warning);
+    CHECK(!duration_timer.tick(59999));
+    CHECK(duration_timer.remaining_ms(59999) == 1);
+    duration_timer.cancel();
+    CHECK(duration_timer.state() == State::Cancelled);
+    CHECK(!duration_timer.tick(60000));
+    CHECK(!duration_timer.tick(65000));
+
     Scheduler timer;
     CHECK(timer.state() == State::Idle);
     CHECK(!timer.tick(100));

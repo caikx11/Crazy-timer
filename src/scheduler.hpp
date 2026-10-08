@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <string_view>
 
 namespace power_timer {
 
@@ -17,6 +18,31 @@ public:
     static constexpr std::uint64_t max_minutes = 10080;
     static constexpr std::uint64_t warning_ms = 60000;
     static constexpr std::uint64_t max_lateness_ms = 5000;
+
+    [[nodiscard]] static std::optional<std::uint64_t>
+    parse_duration(std::wstring_view text) noexcept {
+        constexpr std::wstring_view whitespace = L" \t\r\n\v\f";
+        const auto first = text.find_first_not_of(whitespace);
+        if (first == std::wstring_view::npos) return std::nullopt;
+        const auto last = text.find_last_not_of(whitespace);
+        text = text.substr(first, last - first + 1);
+        if (text.empty()) return std::nullopt;
+        std::uint64_t minutes = 0;
+        for (const auto character : text) {
+            if (character < L'0' || character > L'9') return std::nullopt;
+            const auto digit = static_cast<std::uint64_t>(character - L'0');
+            if (minutes > (max_minutes - digit) / 10) return std::nullopt;
+            minutes = minutes * 10 + digit;
+        }
+        if (minutes < min_minutes) return std::nullopt;
+        return minutes;
+    }
+
+    [[nodiscard]] bool schedule_text(Action action, std::wstring_view text,
+                                     std::uint64_t now_ms) noexcept {
+        const auto minutes = parse_duration(text);
+        return minutes && schedule(action, *minutes, now_ms);
+    }
 
     // Invalid input leaves any existing schedule intact.
     [[nodiscard]] bool schedule(Action action, std::uint64_t minutes,

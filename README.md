@@ -1,15 +1,26 @@
 # Power Timer
 
-Projeto em desenvolvimento: agendador minimalista de desligamento, suspensão e hibernação para Windhawk.
+Agendador minimalista de desligamento, suspensão e hibernação para Windhawk, em desenvolvimento.
 
-Estado: ciclo de testes da tarefa 01 validado após reinicialização: compilação e 130 verificações aprovadas, falha intencional detectada e fonte restaurada. Revisão formal concluída sem achados; tarefa 01 resolvida. Próxima: ícone e painel em simulação. Veja a [validação](docs/validation/task-01.md), a [revisão](docs/reviews/task-01.md) e a [retrospectiva](docs/retro/task-01.md). Ainda não é um mod instalável; interface e integração Windows estão pendentes.
+A prévia local já permite escolher ação, definir duração de 1 minuto a 7 dias, usar atalhos, acompanhar a contagem e cancelar. **Esta versão funciona exclusivamente em simulação.** Nenhuma ação de energia real é executada.
 
-- [Especificação vigente — ready-for-agent](.scratch/power-timer-v1/spec.md)
+![Painel real da prévia simulada](docs/screenshots/task02-simulation.png)
+
+O núcleo passou por 241 verificações. Preview e DLL x86 compilam; a execução integrada no Windhawk 1.7.3 ainda precisa de validação. Tarefa 02 permanece aberta, antes de persistência e repetição.
+
+- [Validação e limitações atuais](docs/validation/task-02.md)
+- [Preparação e instalação local](docs/installation-local.md)
+- [Especificação vigente](.scratch/power-timer-v1/spec.md)
 - [Mapa das 13 tarefas aprovadas](.scratch/power-timer-v1/map.md)
 
-- [Plano de engenharia](docs/engineering-plan.md)
-- [Configuração das skills para revisão](docs/setup-proposal.md)
+No PowerShell 7, na raiz do projeto:
 
-Para testar o núcleo no PowerShell: `./scripts/test.ps1`. O script usa o compilador do Windhawk instalado ou o caminho explicitamente informado. Os testes não chamam APIs de energia.
+```powershell
+./scripts/test.ps1
+./scripts/build-preview.ps1
+./scripts/build-mod.ps1
+```
 
-Publicação no GitHub e no catálogo Windhawk é uma etapa futura, após validação funcional e visual.
+Os scripts usam o compilador instalado com Windhawk. A interface executável fica em `build/preview/`; fonte única para o editor e DLL de conferência ficam em `build/mod/`. Consulte a instalação local antes de ativar o mod.
+
+Publicação no GitHub e no catálogo Windhawk é uma etapa futura, após validação funcional e visual. O repositório é local, sem publicação até aqui.
