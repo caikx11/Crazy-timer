@@ -5,9 +5,9 @@
 **Blocked by:** Nenhuma.
 
 **Status:** ready-for-agent
-**Execution:** claimed
+**Execution:** resolved
 
-**Estado atual:** critérios técnicos validados. Usuário aprovou base vazia e autoria noreply. Repositório local inicializado; revisão em dois eixos em andamento antes de resolver a tarefa. Evidências em docs/validation/task-01.md.
+**Estado atual:** concluída. Ciclo de testes validado, revisão independente sem achados nos dois eixos e retrospectiva registrada. Evidências: docs/validation/task-01.md, docs/reviews/task-01.md e docs/retro/task-01.md. Base vazia e primeira versão preservadas em Git local.
 
 **Histórias da especificação:** Preparação do harness e prefactoring mínimo.
 
@@ -19,6 +19,8 @@
 - [x] Fazer apenas o prefactoring necessário para preservar a interface de tempo/intenção existente; não antecipar funcionalidades.
 
 ## Comments
+
+- 08/10/2026: revisão contra base vazia aprovada concluída em dois subagentes GPT-6.1 Sol/high: Standards 0, Spec 0. Nenhuma correção de código necessária. Retrospectiva registrada. Tarefa resolvida; 02 desbloqueada.
 
 - 08/10/2026: após reinicialização informada pelo usuário, três compilações no mesmo caminho funcionaram: suíte original 130/exit 0; expectativa intencionalmente falsa detectada/exit 1; fonte restaurada byte a byte e suíte 130/exit 0. Fonte e imports PE conferidos, sem APIs de energia. Critérios técnicos atendidos; causa específica do bloqueio anterior não comprovada. Revisão/commit pendentes: base inicial e autoria solicitadas. Ver docs/validation/task-01.md.
 

@@ -35,6 +35,6 @@ Compilador usado pelo runner: `C:/Program Files/Windhawk/Compiler/bin/clang++.ex
 
 Os 130 checks validam o núcleo experimental existente, não todas as funcionalidades do produto. A tolerância experimental de cinco segundos não é requisito aprovado do produto.
 
-Critérios técnicos da tarefa 01 atendidos; revisão formal em andamento. Usuário aprovou base vazia e autoria noreply; Git local inicializado para fixar o escopo da revisão. Tarefa 02 ainda não iniciada. Não criar commits com autoria inventada, nem incluir PROJECT_CONTEXT.md sem pedido explícito.
+Critérios técnicos da tarefa 01 atendidos; revisão formal concluída com Standards 0 e Spec 0. Relatório em ../reviews/task-01.md. Usuário aprovou base vazia e autoria noreply; Git local inicializado para fixar o escopo da revisão. Tarefa 02 ainda não iniciada. Não criar commits com autoria inventada, nem incluir PROJECT_CONTEXT.md sem pedido explícito.
 
 Histórico: [diagnóstico de acesso](../test-harness-diagnosis.md).

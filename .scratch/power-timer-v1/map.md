@@ -4,9 +4,9 @@ Divisão aprovada pelo usuário em 08/10/2026. to-tickets concluída. [Especific
 
 ## Execução
 
-Tarefa 01 com critérios técnicos validados; atualmente ready-for-agent/claimed, em revisão da primeira versão local com base vazia aprovada. Suíte passou 130 verificações, rejeitou falha intencional e passou novamente após restauração. Uma tarefa só pode ser iniciada quando todas as dependências estiverem resolved; tarefa 02 ainda não iniciada. O estado nos tickets individuais é a fonte de verdade.
+Tarefa 01 resolved: critérios técnicos validados, revisão em dois eixos sem achados e retrospectiva registrada. Tarefa 02 agora disponível, ainda open. Iniciar uma tarefa apenas quando suas dependências estiverem resolved. Os tickets individuais são a fonte de verdade.
 
-As tarefas 04, 06, 10 e 11 ficam disponíveis após 03; coordenar alterações em arquivos compartilhados. Apenas 01 pode começar agora. Na criação, todas tinham Status: ready-for-agent, o que não elimina bloqueios por dependências.
+As tarefas 04, 06, 10 e 11 ficam disponíveis após 03; coordenar alterações em arquivos compartilhados. Apenas 02 pode começar agora. Na criação, todas tinham Status: ready-for-agent, o que não elimina bloqueios por dependências.
 
 | Nº | Tarefa | Bloqueada por | Estado na criação |
 |---|---|---|---|
