@@ -43,7 +43,7 @@ inline void (*log_message)(const wchar_t*) = nullptr;
 enum ControlId { action_id = 100, duration_id, schedule_id, cancel_id,
                  preset_id = 110, open_id = 120, settings_id, visibility_id, exit_id, menu_id,
                  list_id = 130, edit_id, pause_id, erase_id, new_id,
-                 kind_id = 140, date_id, time_id, daily_id, weekday_id = 150 };
+                 kind_id = 140, date_id, time_id, daily_id, weekday_id = 150, theme_id = 160 };
 
 inline ClockSample clock_sample() {
     FILETIME file{};
@@ -102,7 +102,7 @@ inline HICON make_icon() {
         const bool clock = (radius > 9.0 && radius < 11.0) ||
             (x >= 15 && x <= 16 && y >= 8 && y <= 16) ||
             (x >= 16 && x <= 22 && y >= 15 && y <= 16);
-        pixels[y * 32 + x] = radius > 15.3 ? 0 : clock ? 0xFFFFFFFF : 0xFF2563EB;
+        pixels[y * 32 + x] = radius > 15.3 ? 0 : clock ? 0xFFFFFFFF : 0xFF0078D4;
     }
     HBITMAP mask = CreateBitmap(32, 32, 1, 1, nullptr);
     ICONINFO icon_info{TRUE, 0, 0, mask, color};
@@ -119,7 +119,7 @@ class Panel {
     HFONT fonts_[4]{};
     HBRUSH background_{};
     HICON icon_{};
-    HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{};
+    HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{}, theme_{};
     FileScheduleStorage storage_;
     WindowsCalendar calendar_;
     ScheduleBook book_;
@@ -129,15 +129,18 @@ class Panel {
     std::uint64_t selected_id_{}, editing_id_{};
     std::vector<std::uint64_t> displayed_ids_;
     std::wstring list_signature_;
+    std::wstring conflict_signature_;
     bool rebuilding_list_ = false;
     std::unordered_set<std::uint64_t> warned_;
+    std::unordered_set<std::uint64_t> warned_thresholds_; // occurrence_id * 10 + threshold_index
     NOTIFYICONDATAW tray_{};
     UINT taskbar_created_{};
     UINT dpi_ = 96;
     bool tray_added_ = false;
     std::uint64_t last_tray_try_{};
-    COLORREF bg_ = RGB(247, 249, 252), ink_ = RGB(24, 35, 53), accent_ = RGB(37, 99, 235);
+    COLORREF bg_ = RGB(247, 249, 252), ink_ = RGB(24, 35, 53), accent_ = RGB(0, 120, 212);
     bool high_contrast_ = false;
+    unsigned theme_ = 0; // 0=automatic, 1=light, 2=dark
 
     int px(int value) const { return MulDiv(value, static_cast<int>(dpi_), 96); }
     HWND add(const wchar_t* type, const wchar_t* label, DWORD style, int id,
@@ -161,13 +164,72 @@ class Panel {
             SendMessageW(item.handle, WM_SETFONT, reinterpret_cast<WPARAM>(fonts_[item.font]), TRUE);
         }
     }
+    // Get system theme preference: 0=dark, 1=light
+    bool get_system_dark_theme() {
+        HKEY hKey;
+        DWORD value = 0;
+        DWORD size = sizeof(DWORD);
+        LONG result = RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+            0,
+            KEY_READ,
+            &hKey
+        );
+        if (result == ERROR_SUCCESS) {
+            result = RegQueryValueExW(
+                hKey,
+                L"AppsUseLightTheme",
+                nullptr,
+                nullptr,
+                reinterpret_cast<LPBYTE>(&value),
+                &size
+            );
+            RegCloseKey(hKey);
+            if (result == ERROR_SUCCESS) {
+                return value == 0; // 0 = dark theme, 1 = light theme
+            }
+        }
+        // Default to light if we can't read the registry
+        return false;
+    }
+
     void colors() {
         HIGHCONTRASTW contrast{sizeof(contrast), 0, nullptr};
         SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0);
         high_contrast_ = (contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
-        bg_ = high_contrast_ ? GetSysColor(COLOR_WINDOW) : RGB(247, 249, 252);
-        ink_ = high_contrast_ ? GetSysColor(COLOR_WINDOWTEXT) : RGB(24, 35, 53);
-        accent_ = high_contrast_ ? GetSysColor(COLOR_HIGHLIGHT) : RGB(37, 99, 235);
+
+        if (high_contrast_) {
+            bg_ = GetSysColor(COLOR_WINDOW);
+            ink_ = GetSysColor(COLOR_WINDOWTEXT);
+            accent_ = GetSysColor(COLOR_HIGHLIGHT);
+        } else {
+            bool use_dark = false;
+            switch (theme_) {
+                case 0: // automatic
+                    use_dark = get_system_dark_theme();
+                    break;
+                case 1: // light
+                    use_dark = false;
+                    break;
+                case 2: // dark
+                    use_dark = true;
+                    break;
+            }
+
+            if (use_dark) {
+                // Dark theme colors
+                bg_ = RGB(30, 30, 30);
+                ink_ = RGB(240, 240, 240);
+                accent_ = RGB(0, 120, 212); // Keep our brand blue
+            } else {
+                // Light theme colors
+                bg_ = RGB(247, 249, 252);
+                ink_ = RGB(24, 35, 53);
+                accent_ = RGB(0, 120, 212); // Our brand blue
+            }
+        }
+
         if (background_) DeleteObject(background_);
         background_ = CreateSolidBrush(bg_);
         if (window_) RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
@@ -223,9 +285,9 @@ class Panel {
         list_ = add(WC_LISTVIEWW, L"", WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
                     list_id, 24, 390, 532, 130, 2, WS_EX_CLIENTEDGE);
         ListView_SetExtendedListViewStyle(list_, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-        const wchar_t* labels[] = {text::action_column, text::due_column, text::state_column, text::rule_column};
-        const int widths[] = {100, 184, 142, 82};
-        for (int i = 0; i < 4; ++i) {
+        const wchar_t* labels[] = {text::id_column, text::action_column, text::due_column, text::state_column, text::rule_column};
+        const int widths[] = {40, 80, 172, 130, 80};
+        for (int i = 0; i < 5; ++i) {
             LVCOLUMNW column{}; column.mask = LVCF_TEXT | LVCF_WIDTH;
             column.pszText = const_cast<wchar_t*>(labels[i]); column.cx = px(widths[i]);
             ListView_InsertColumn(list_, i, &column);
@@ -239,6 +301,12 @@ class Panel {
         detail_ = add(L"STATIC", text::idle_detail, SS_CENTER, 0, 24, 660, 532, 40, 2);
         error_ = add(L"STATIC", L"", SS_CENTER, 0, 24, 710, 532, 42, 2);
         add(L"STATIC", text::simulation_note, SS_CENTER, 0, 24, 766, 532, 22, 2);
+        add(L"STATIC", text::settings_note, SS_CENTER, 0, 24, 804, 532, 22, 2);
+        add(L"STATIC", L"Tema", 0, 0, 24, 828, 254, 22);
+        theme_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                    theme_id, 24, 852, 254, 180);
+        for (const auto* theme : text::theme_strings) SendMessageW(theme_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(theme));
+        SendMessageW(theme_, CB_SETCURSEL, theme_, 0);
         fonts_and_layout();
         show_kind();
     }
@@ -298,14 +366,22 @@ class Panel {
         notice.uFlags = NIF_INFO;
         wcsncpy_s(notice.szInfoTitle, title, _TRUNCATE);
         wcsncpy_s(notice.szInfo, body, _TRUNCATE);
-        notice.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND | NIIF_RESPECT_QUIET_TIME;
+        // Respect sound setting: NIIF_NOSOUND only if sound disabled
+        UINT sound_flag = book_.get_theme() & 1 ? 0 : NIIF_NOSOUND;
+        notice.dwInfoFlags = NIIF_INFO | sound_flag | NIIF_RESPECT_QUIET_TIME;
         Shell_NotifyIconW(NIM_MODIFY, &notice);
+
+        // Play system beep if sound enabled (fallback to MessageBeep if PlaySound fails)
+        if (book_.get_sound_enabled()) {
+            MessageBeep(MB_OK); // Simple system beep
+        }
     }
     const ScheduleRecord* selected_record() const {
         for (const auto& record : book_.list()) if (record.id == selected_id_) return &record;
         return nullptr;
     }
     static const wchar_t* state_label(const ScheduleRecord& record) {
+        if (record.conflict_with) return text::state_conflict;
         if (record.state == OccurrenceState::Scheduled && record.paused) return text::state_paused;
         switch (record.state) {
             case OccurrenceState::Scheduled: return text::state_scheduled;
@@ -317,6 +393,16 @@ class Panel {
         return text::state_uncertain;
     }
     void show_error() {
+        if (book_.error() == BookError::Conflict) {
+            std::wstring message = std::wstring(text::conflict_error) + text::schedule_number + std::to_wstring(book_.conflicting_id());
+            for (const auto& record : book_.list()) if (record.id == book_.conflicting_id()) {
+                message += std::wstring(text::separator) + text::actions[static_cast<int>(record.action)] +
+                    text::separator + local_time_at(record.due_utc_ms);
+                break;
+            }
+            set_text(error_, message);
+            return;
+        }
         const wchar_t* message = L"";
         switch (book_.error()) {
             case BookError::InvalidInput: message = selected_kind() == ScheduleKind::Duration ? text::record_input_error : text::calendar_input_error; break;
@@ -326,6 +412,7 @@ class Panel {
             case BookError::InvalidData: message = text::invalid_data; break;
             case BookError::NotReady: message = text::not_ready; break;
             case BookError::None: break;
+            case BookError::Conflict: break;
         }
         set_text(error_, message);
     }
@@ -334,7 +421,7 @@ class Panel {
         for (const auto& record : book_.list()) {
             signature += std::to_wstring(record.id) + L":" + std::to_wstring(record.occurrence_id) + L":" +
                 std::to_wstring(record.due_utc_ms) + L":" + std::to_wstring(static_cast<int>(record.state)) +
-                (record.paused ? L"p;" : L"a;");
+                (record.paused ? L"p:" : L"a:") + std::to_wstring(record.conflict_with) + L";";
         }
         if (signature == list_signature_) return;
         list_signature_ = signature;
@@ -347,14 +434,16 @@ class Panel {
             const int row = static_cast<int>(displayed_ids_.size());
             displayed_ids_.push_back(record.id);
             LVITEMW item{}; item.mask = LVIF_TEXT; item.iItem = row;
-            item.pszText = const_cast<wchar_t*>(text::actions[static_cast<int>(record.action)]);
+            auto number = std::to_wstring(record.id);
+            item.pszText = number.data();
             ListView_InsertItem(list_, &item);
             auto due = record.state == OccurrenceState::Scheduled ? local_time_at(record.due_utc_ms) : std::wstring(text::no_next);
             auto rule = record.kind == ScheduleKind::Duration ? std::to_wstring(record.minutes) + L" min" :
                 std::wstring(record.kind == ScheduleKind::Once ? text::once_rule : text::weekly_rule);
-            ListView_SetItemText(list_, row, 1, due.data());
-            ListView_SetItemText(list_, row, 2, const_cast<wchar_t*>(state_label(record)));
-            ListView_SetItemText(list_, row, 3, rule.data());
+            ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(text::actions[static_cast<int>(record.action)]));
+            ListView_SetItemText(list_, row, 2, due.data());
+            ListView_SetItemText(list_, row, 3, const_cast<wchar_t*>(state_label(record)));
+            ListView_SetItemText(list_, row, 4, rule.data());
             if (record.id == selected_id_) ListView_SetItemState(list_, row, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
         }
         SendMessageW(list_, WM_SETREDRAW, TRUE, 0);
@@ -372,14 +461,72 @@ class Panel {
                 recorded ? text::completed_detail : text::uncertain_detail);
             if (!recorded) break;
         }
+        // Multi-threshold warnings: 30min, 15min, 10min, 5min, 1min (existing warning_ms)
+        // Check from largest to smallest threshold to ensure we fire the highest applicable threshold first
+        const std::array<std::pair<std::uint64_t, size_t>, 5> thresholds = {{
+            {30ULL * 60 * 1000, 0},  // 30 minutes
+            {15ULL * 60 * 1000, 1},  // 15 minutes
+            {10ULL * 60 * 1000, 2},  // 10 minutes
+            {5ULL * 60 * 1000, 3},   // 5 minutes
+            {Scheduler::warning_ms, 4} // 1 minute (existing)
+        }};
+
         for (const auto& record : book_.list()) {
             if (!book_.writable()) break;
-            if (record.state == OccurrenceState::Scheduled && !record.paused &&
-                book_.remaining_ms(record.id, now) <= Scheduler::warning_ms &&
-                warned_.insert(record.occurrence_id).second) {
-                notify(text::warning, text::countdown_notification);
-                show(false);
+            if (record.state != OccurrenceState::Scheduled || record.paused || record.conflict_with) continue;
+
+            const auto remaining = book_.remaining_ms(record.id, now);
+            if (remaining == 0) continue; // Skip expired
+
+            // Check each threshold from largest to smallest
+            for (const auto& [threshold_ms, threshold_index] : thresholds) {
+                if (remaining <= threshold_ms) {
+                    // Create unique key for this occurrence + threshold: occurrence_id * 10 + threshold_index
+                    const auto warn_key = record.occurrence_id * 10 + threshold_index;
+                    if (warned_thresholds_.insert(warn_key).second) {
+                        // Select appropriate message based on threshold
+                        const wchar_t* title = text::warning;
+                        const wchar_t* body = text::countdown_notification; // fallback
+
+                        switch (threshold_index) {
+                            case 0: // 30 minutes
+                                title = text::warning_30min;
+                                body = text::warning_30min_detail;
+                                break;
+                            case 1: // 15 minutes
+                                title = text::warning_15min;
+                                body = text::warning_15min_detail;
+                                break;
+                            case 2: // 10 minutes
+                                title = text::warning_10min;
+                                body = text::warning_10min_detail;
+                                break;
+                            case 3: // 5 minutes
+                                title = text::warning_5min;
+                                body = text::warning_5min_detail;
+                                break;
+                            case 4: // 1 minute (existing)
+                                title = text::warning;
+                                body = text::countdown_notification;
+                                break;
+                        }
+
+                        notify(title, body);
+                        // Don't show() here - only show for the 1-minute warning to avoid too many popups
+                        if (threshold_index == 4) { // 1-minute warning
+                            show(false);
+                        }
+                        break; // Only fire the highest threshold that matches
+                    }
+                }
             }
+        }
+        std::wstring conflicts;
+        for (const auto& record : book_.list()) if (record.conflict_with)
+            conflicts += std::to_wstring(record.id) + L":" + std::to_wstring(record.conflict_with) + L";";
+        if (conflicts != conflict_signature_) {
+            conflict_signature_ = conflicts;
+            if (!conflicts.empty()) notify(text::state_conflict, text::conflict_notification);
         }
         sync_list();
         const auto* record = selected_record();
@@ -394,7 +541,7 @@ class Panel {
         set_text(start_, editing_id_ ? text::save_schedule : text::add_schedule);
         if (record) {
             set_text(status_, state_label(*record));
-            if (scheduled && !record->paused) {
+            if (scheduled && !record->paused && !record->conflict_with) {
                 const auto seconds = (book_.remaining_ms(record->id, now) + 999) / 1000;
                 wchar_t value[48]{};
                 swprintf_s(value, L"%02llu:%02llu:%02llu", seconds / 3600, (seconds / 60) % 60, seconds % 60);
@@ -404,11 +551,13 @@ class Panel {
                 record->paused && scheduled ? text::paused_detail : nullptr;
             std::wstring detail = note ? std::wstring(note) : std::wstring(text::actions[static_cast<int>(record->action)]) +
                 text::separator + local_time_at(record->due_utc_ms);
-            if (record->kind == ScheduleKind::Weekly) {
+            if (record->conflict_with) detail = std::wstring(text::conflict_detail) +
+                std::to_wstring(record->conflict_with) + text::conflict_hint;
+            else if (record->kind == ScheduleKind::Weekly) {
                 detail += L"\n";
                 for (unsigned i = 0; i < 7; ++i) if (record->weekdays & (1u << i)) detail += std::wstring(text::weekdays[i]) + L" ";
                 if (record->last_occurrence_id) {
-                    auto last = *record; last.state = record->last_state; last.paused = false;
+                    auto last = *record; last.state = record->last_state; last.paused = false; last.conflict_with = 0;
                     detail += std::wstring(text::separator) + text::last_result + state_label(last);
                 }
             }
@@ -531,7 +680,15 @@ class Panel {
         if (draw.itemState & ODS_FOCUS) { InflateRect(&rect, -px(4), -px(4)); DrawFocusRect(draw.hDC, &rect); }
     }
 public:
-    Panel() : storage_(data_file()), book_(storage_, calendar_) {}
+    Panel() : storage_(data_file()), book_(storage_, calendar_) {
+        // Load theme preference from storage
+        auto loaded = storage_.load();
+        if (loaded.status == power_timer::LoadStatus::Loaded) {
+            theme_ = loaded.snapshot.theme;
+        }
+        // Apply theme immediately
+        colors();
+    }
     ~Panel() {
         if (window_ && IsWindow(window_)) DestroyWindow(window_);
         for (auto font : fonts_) if (font) DeleteObject(font);
@@ -591,6 +748,8 @@ public:
         wcsncpy_s(tray_.szTip, text::title, _TRUNCATE);
         if (!SetTimer(window_, timer_id, 250, nullptr)) { DestroyWindow(window_); return false; }
         add_tray();
+        // Initialize theme combo selection after controls created
+        if (theme_) SendMessageW(theme_, CB_SETCURSEL, static_cast<WPARAM>(theme_), 0);
         refresh();
         host_window.store(window_);
         if (show_on_start) show(true);
@@ -614,6 +773,12 @@ public:
                 }
                 else if (LOWORD(wparam) == action_id && HIWORD(wparam) == CBN_SELCHANGE) self->preview();
                 else if (LOWORD(wparam) == kind_id && HIWORD(wparam) == CBN_SELCHANGE) self->show_kind();
+                else if (LOWORD(wparam) == theme_id && HIWORD(wparam) == CBN_SELCHANGE) {
+                    self->theme_ = static_cast<unsigned>(SendMessageW(self->theme_, CB_GETCURSEL, 0, 0));
+                    self->book_.set_theme(self->theme_);
+                    self->colors();
+                    return 0;
+                }
                 else if (HIWORD(wparam) == BN_CLICKED) self->command(LOWORD(wparam));
                 return 0;
             case WM_NOTIFY: {

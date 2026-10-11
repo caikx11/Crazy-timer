@@ -21,10 +21,13 @@ struct ScheduleRecord {
     std::uint64_t civil_high_water = 0;
     std::uint64_t last_occurrence_id = 0;
     OccurrenceState last_state = OccurrenceState::Scheduled;
+    std::uint64_t conflict_with = 0;
+    bool force_shutdown = false;
 };
 struct ScheduleSnapshot {
     std::uint64_t next_id = 1, next_occurrence_id = 1;
     std::vector<ScheduleRecord> records;
+    bool sound_enabled = false;
 };
 enum class LoadStatus { Missing, Loaded, Invalid, Unavailable };
 struct LoadResult { LoadStatus status; ScheduleSnapshot snapshot; };
@@ -35,6 +38,6 @@ public:
     virtual bool save(const ScheduleSnapshot&) = 0;
 };
 struct Delivery { std::uint64_t id, occurrence_id; Action action; };
-enum class BookError { None, InvalidInput, NotFound, Storage, InvalidData, NotReady, Calendar };
+enum class BookError { None, InvalidInput, NotFound, Storage, InvalidData, NotReady, Calendar, Conflict };
 
 } // namespace power_timer

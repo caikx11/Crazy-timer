@@ -7,12 +7,13 @@
 namespace power_timer {
 inline constexpr std::size_t max_schedule_file_bytes = 1024 * 1024;
 // Canonical ASCII: exact spaces/newlines, decimal unsigned integers, no leading
-// zeroes, and no ignored fields/trailing bytes. Version 1 reads as durations;
-// every successful write uses version 2.
+// zeroes, and no ignored fields/trailing bytes. Versions 1, 2, and 3 remain readable;
+// every successful write uses version 4.
 inline std::string encode_snapshot(const ScheduleSnapshot& snapshot) {
     if (!valid_snapshot(snapshot)) return {};
-    std::string data = "POWER_TIMER 2\n" + std::to_string(snapshot.next_id) + " " +
-        std::to_string(snapshot.next_occurrence_id) + " " + std::to_string(snapshot.records.size()) + "\n";
+    std::string data = "POWER_TIMER 4\n" + std::to_string(snapshot.next_id) + " " +
+        std::to_string(snapshot.next_occurrence_id) + " " + std::to_string(snapshot.records.size()) + " " +
+        (snapshot.sound_enabled ? "1" : "0") + "\n";
     for (const auto& record : snapshot.records) {
         data += std::to_string(record.id) + " " + std::to_string(record.occurrence_id) + " " +
             std::to_string(static_cast<unsigned>(record.action)) + " " + std::to_string(record.minutes) + " " +
@@ -24,7 +25,8 @@ inline std::string encode_snapshot(const ScheduleSnapshot& snapshot) {
             std::to_string(record.civil.minute) + " " + std::to_string(record.weekdays) + " " +
             std::to_string(record.minute_of_day) + " " + std::to_string(record.civil_high_water) + " " +
             std::to_string(record.last_occurrence_id) + " " +
-            std::to_string(static_cast<unsigned>(record.last_state)) + "\n";
+            std::to_string(static_cast<unsigned>(record.last_state)) + " " +
+            std::to_string(record.conflict_with) + " " + (record.force_shutdown ? "1" : "0") + "\n";
     }
     return data.size() <= max_schedule_file_bytes ? data : std::string{};
 }
@@ -32,10 +34,15 @@ inline std::string encode_snapshot(const ScheduleSnapshot& snapshot) {
 inline std::optional<ScheduleSnapshot> decode_snapshot(std::string_view data) {
     constexpr std::string_view version_1 = "POWER_TIMER 1\n";
     constexpr std::string_view version_2 = "POWER_TIMER 2\n";
+    constexpr std::string_view version_3 = "POWER_TIMER 3\n";
+    constexpr std::string_view version_4 = "POWER_TIMER 4\n";
     if (data.size() > max_schedule_file_bytes) return std::nullopt;
     const bool legacy = data.starts_with(version_1);
-    if (!legacy && !data.starts_with(version_2)) return std::nullopt;
-    data.remove_prefix(legacy ? version_1.size() : version_2.size());
+    const bool v2 = data.starts_with(version_2);
+    const bool v3 = data.starts_with(version_3);
+    const bool v4 = data.starts_with(version_4);
+    if (!legacy && !v2 && !v3 && !v4) return std::nullopt;
+    data.remove_prefix(legacy ? version_1.size() : v2 ? version_2.size() : v3 ? version_3.size() : version_4.size());
     auto number = [&data](char delimiter) -> std::optional<std::uint64_t> {
         const auto end = data.find(delimiter);
         if (end == std::string_view::npos || end == 0) return std::nullopt;
@@ -48,9 +55,15 @@ inline std::optional<ScheduleSnapshot> decode_snapshot(std::string_view data) {
         data.remove_prefix(end + 1);
         return value;
     };
-    const auto next_id = number(' '), next_occurrence = number(' '), count = number('\n');
+    const auto next_id = number(' '), next_occurrence = number(' '), count = number(v4 ? ' ' : '\n');
+    std::optional<std::uint64_t> sound_enabled{};
+    if (v4) {
+        sound_enabled = number('\n');
+        if (!sound_enabled || *sound_enabled > 1) return std::nullopt;
+    }
     if (!next_id || !next_occurrence || !count || *count > max_schedule_records) return std::nullopt;
     ScheduleSnapshot snapshot{*next_id, *next_occurrence, {}};
+    if (sound_enabled) snapshot.sound_enabled = *sound_enabled == 1;
     for (std::uint64_t i = 0; i < *count; ++i) {
         const auto id = number(' '), occurrence = number(' '), action = number(' '), minutes = number(' '),
             due = number(' '), paused = number(' '), state = number(legacy ? '\n' : ' ');
@@ -60,7 +73,7 @@ inline std::optional<ScheduleSnapshot> decode_snapshot(std::string_view data) {
         if (!legacy) {
             const auto kind = number(' '), year = number(' '), month = number(' '), day = number(' '),
                 hour = number(' '), minute = number(' '), weekdays = number(' '), minute_of_day = number(' '),
-                high_water = number(' '), last_id = number(' '), last_state = number('\n');
+                high_water = number(' '), last_id = number(' '), last_state = number((v3 || v4) ? ' ' : '\n');
             if (!kind || !year || !month || !day || !hour || !minute || !weekdays || !minute_of_day ||
                 !high_water || !last_id || !last_state || *kind > 2 || *last_state > 4 ||
                 *year > static_cast<std::uint64_t>(std::numeric_limits<int>::max()) ||
@@ -76,6 +89,12 @@ inline std::optional<ScheduleSnapshot> decode_snapshot(std::string_view data) {
             record.civil_high_water = *high_water;
             record.last_occurrence_id = *last_id;
             record.last_state = static_cast<OccurrenceState>(*last_state);
+            if (v3 || v4) {
+                const auto conflict_with = number(' '), force_shutdown = number('\n');
+                if (!conflict_with || !force_shutdown || *force_shutdown > 1) return std::nullopt;
+                record.conflict_with = *conflict_with;
+                record.force_shutdown = *force_shutdown == 1;
+            }
         }
         snapshot.records.push_back(record);
     }

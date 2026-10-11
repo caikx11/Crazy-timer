@@ -69,6 +69,7 @@ public:
                 }
             }
         }
+        if (!update_conflicts(candidate, now, changed)) { ready_ = false; return false; }
         if (changed && !commit(candidate)) { ready_ = false; return false; }
         error_ = BookError::None;
         return true;
@@ -79,19 +80,30 @@ public:
         auto candidate = snapshot_;
         std::vector<Delivery> deliveries;
         bool changed = false;
+        std::unordered_set<std::uint64_t> replanned;
+        // Refresh every rule first: a later row may move onto an earlier row's
+        // deadline. No intent may be produced until the complete set is checked.
         for (auto& record : candidate.records) {
             if (!calendar_available(record, now)) { ready_ = false; return {}; }
-            if (record.kind == ScheduleKind::Weekly) {
-                const auto values = calendar_->resolve(record.civil);
-                if (!values) { fail(BookError::Calendar); ready_ = false; return {}; }
-                if (values->empty() || values->front() != record.due_utc_ms) {
+            if (record.kind != ScheduleKind::Weekly) continue;
+            const auto values = calendar_->resolve(record.civil);
+            if (!values) { fail(BookError::Calendar); ready_ = false; return {}; }
+            if (values->empty() || values->front() != record.due_utc_ms) {
+                if (values->empty()) {
                     if (!refresh_weekly(candidate, record, now)) { ready_ = false; return {}; }
-                    changed = true;
-                    continue;
-                }
+                } else record.due_utc_ms = values->front();
+                changed = true;
+                replanned.insert(record.id);
             }
-            if (record.state != OccurrenceState::Scheduled || remaining_ms(record.id, now) != 0)
+        }
+        if (!update_conflicts(candidate, now, changed)) { ready_ = false; return {}; }
+        for (auto& record : candidate.records) {
+            if (record.conflict_with) continue;
+            if (replanned.contains(record.id)) {
+                if (!refresh_weekly(candidate, record, now)) { ready_ = false; return {}; }
                 continue;
+            }
+            if (record.state != OccurrenceState::Scheduled || remaining_ms(record.id, now) != 0) continue;
             changed = true;
             const auto late = record.kind == ScheduleKind::Duration
                 ? now.monotonic_ms - deadlines_.at(record.id) : now.utc_ms - record.due_utc_ms;
@@ -134,7 +146,7 @@ public:
         const auto id = candidate.next_id++;
         candidate.records.push_back({id, candidate.next_occurrence_id++, action,
             *minutes, now.utc_ms + *minutes * 60000, false, OccurrenceState::Scheduled});
-        if (!commit(candidate)) return false;
+        if (!accept_candidate(candidate, id, now) || !commit(candidate)) return false;
         deadlines_[id] = now.monotonic_ms + *minutes * 60000;
         return true;
     }
@@ -148,13 +160,15 @@ public:
         if (!minutes || !valid_action(action) || !valid_deadline(now, *minutes) ||
             snapshot_.next_occurrence_id == maximum) return fail(BookError::InvalidInput);
         const bool paused = record->paused;
+        const bool force = record->force_shutdown && action == Action::Shutdown;
         *record = {id, 0, action, 0, 0, paused, OccurrenceState::Scheduled};
+        record->force_shutdown = force;
         record->action = action;
         record->minutes = *minutes;
         record->due_utc_ms = now.utc_ms + *minutes * 60000;
         record->occurrence_id = candidate.next_occurrence_id++;
         record->state = OccurrenceState::Scheduled;
-        if (!commit(candidate)) return false;
+        if (!accept_candidate(candidate, id, now) || !commit(candidate)) return false;
         deadlines_[id] = now.monotonic_ms + *minutes * 60000;
         return true;
     }
@@ -197,7 +211,7 @@ public:
             record->state = OccurrenceState::Expired;
         else if (record->paused == paused) { error_ = BookError::None; return true; }
         record->paused = paused;
-        return commit(candidate);
+        return accept_candidate(candidate, id, now, false) && commit(candidate);
     }
 
     bool erase(std::uint64_t id) {
@@ -206,6 +220,8 @@ public:
         auto record = find(candidate, id);
         if (record == candidate.records.end()) return fail(BookError::NotFound);
         candidate.records.erase(record);
+        bool changed = false;
+        if (!update_conflicts(candidate, last_now_, changed)) return false;
         if (!commit(candidate)) return false;
         deadlines_.erase(id);
         return true;
@@ -222,6 +238,8 @@ public:
             consume_weekly(*record, OccurrenceState::Cancelled);
             if (!advance_weekly(candidate, *record, {record->due_utc_ms, 0})) return false;
         }
+        bool changed = false;
+        if (!update_conflicts(candidate, last_now_, changed)) return false;
         return commit(candidate);
     }
 
@@ -238,10 +256,12 @@ public:
     }
     bool writable() const { return ready_; }
     BookError error() const { return error_; }
+    std::uint64_t conflicting_id() const { return conflicting_id_; }
 
 private:
     static constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
     static constexpr std::uint64_t calendar_end = 253402300800000ULL;
+    static constexpr std::uint64_t invalid_due = std::numeric_limits<std::uint64_t>::max();
     bool calendar_available(const ScheduleRecord& record, ClockSample now) {
         if (record.kind == ScheduleKind::Duration) return true;
         if (now.utc_ms >= calendar_end) return fail(BookError::InvalidData);
@@ -327,13 +347,14 @@ private:
             return fail(BookError::InvalidInput);
         ScheduleRecord record{id ? id : candidate.next_id++, candidate.next_occurrence_id++, action,
             0, 0, id ? old->paused : false, OccurrenceState::Scheduled};
+        record.force_shutdown = id && old->force_shutdown && action == Action::Shutdown;
         record.kind = ScheduleKind::Weekly;
         record.weekdays = weekdays;
         record.minute_of_day = minute_of_day;
         BookError error;
         if (!plan_weekly(record, now, error)) return fail(error);
         if (id) *old = record; else candidate.records.push_back(record);
-        if (!commit(candidate)) return false;
+        if (!accept_candidate(candidate, record.id, now) || !commit(candidate)) return false;
         deadlines_.erase(record.id);
         return true;
     }
@@ -360,11 +381,103 @@ private:
             return fail(BookError::InvalidInput);
         ScheduleRecord record{id ? id : candidate.next_id++, candidate.next_occurrence_id++, action,
             0, *due, id ? old->paused : false, OccurrenceState::Scheduled};
+        record.force_shutdown = id && old->force_shutdown && action == Action::Shutdown;
         record.kind = ScheduleKind::Once;
         record.civil = civil;
         if (id) *old = record; else candidate.records.push_back(record);
-        if (!commit(candidate)) return false;
+        if (!accept_candidate(candidate, record.id, now) || !commit(candidate)) return false;
         deadlines_.erase(record.id);
+        return true;
+    }
+    struct ConflictTime {
+        std::uint64_t due = 0, civil = 0;
+        unsigned weekday_bit = 0, minute = 0;
+    };
+    bool update_conflicts(ScheduleSnapshot& candidate, ClockSample now, bool& changed,
+                          std::uint64_t replaced_id = 0) {
+        last_now_ = now;
+        const bool has_weekly = std::any_of(candidate.records.begin(), candidate.records.end(),
+            [](const auto& row) { return !row.paused && row.kind == ScheduleKind::Weekly; });
+        std::vector<ConflictTime> times(candidate.records.size());
+        std::vector<std::uint64_t> conflicts(candidate.records.size());
+        for (std::size_t i = 0; i < candidate.records.size(); ++i) {
+            const auto& row = candidate.records[i];
+            if (row.paused || row.state != OccurrenceState::Scheduled) continue;
+            auto& time = times[i];
+            time.due = row.due_utc_ms;
+            const auto deadline = deadlines_.find(row.id);
+            if (row.kind == ScheduleKind::Duration && row.id != replaced_id && deadline != deadlines_.end()) {
+                if (deadline->second >= now.monotonic_ms) {
+                    const auto remaining = deadline->second - now.monotonic_ms;
+                    if (now.utc_ms > maximum - remaining) return fail(BookError::InvalidData);
+                    time.due = now.utc_ms + remaining;
+                } else {
+                    const auto late = now.monotonic_ms - deadline->second;
+                    // An elapsed deadline before the UTC epoch cannot match a civil rule.
+                    if (late > now.utc_ms) {
+                        time.due = row.due_utc_ms;
+                        // civil fields remain zero/unset
+                    } else {
+                        time.due = now.utc_ms - late;
+                    }
+                }
+                // Update the record's due_utc_ms to the projected civil time for persistence across restarts
+                if (row.due_utc_ms != time.due) {
+                    candidate.records[i].due_utc_ms = time.due;
+                    changed = true;
+                }
+            }
+            if (!has_weekly || row.kind == ScheduleKind::Weekly || time.due >= calendar_end) continue;
+            if (!calendar_) return fail(BookError::Calendar);
+            const auto local = calendar_->local(time.due);
+            if (!local || !valid_civil(*local)) return fail(BookError::Calendar);
+            const auto values = calendar_->resolve(*local);
+            if (!values) return fail(BookError::Calendar);
+            // Only an exact match to the first instant of a civil minute can be
+            // a weekly occurrence; second-fold instants and milliseconds differ.
+            if (!values->empty() && values->front() == time.due) {
+                time.civil = civil_key(*local);
+                time.weekday_bit = 1U << weekday(*local);
+                time.minute = local->hour * 60 + local->minute;
+            }
+        }
+        for (std::size_t i = 0; i < candidate.records.size(); ++i) {
+            const auto& a = candidate.records[i];
+            if (a.paused || a.state != OccurrenceState::Scheduled) continue;
+            for (std::size_t j = i + 1; j < candidate.records.size(); ++j) {
+                const auto& b = candidate.records[j];
+                if (b.paused || b.state != OccurrenceState::Scheduled) continue;
+                bool collision;
+                if (a.kind == ScheduleKind::Weekly && b.kind == ScheduleKind::Weekly) {
+                    collision = (a.weekdays & b.weekdays) && a.minute_of_day == b.minute_of_day;
+                } else if (a.kind == ScheduleKind::Weekly || b.kind == ScheduleKind::Weekly) {
+                    const auto& weekly = a.kind == ScheduleKind::Weekly ? a : b;
+                    const auto& finite = a.kind == ScheduleKind::Weekly ? times[j] : times[i];
+                    collision = finite.civil > weekly.civil_high_water &&
+                        (finite.weekday_bit & weekly.weekdays) && finite.minute == weekly.minute_of_day;
+                } else collision = times[i].due == times[j].due;
+                if (!collision) continue;
+                // A deterministic neighbour identifies the component without
+                // depending on row order or silently selecting an action.
+                if (!conflicts[i] || b.id < conflicts[i]) conflicts[i] = b.id;
+                if (!conflicts[j] || a.id < conflicts[j]) conflicts[j] = a.id;
+            }
+        }
+        for (std::size_t i = 0; i < candidate.records.size(); ++i) {
+            changed = changed || candidate.records[i].conflict_with != conflicts[i];
+            candidate.records[i].conflict_with = conflicts[i];
+        }
+        return true;
+    }
+    bool accept_candidate(ScheduleSnapshot& candidate, std::uint64_t id, ClockSample now,
+                          bool replaced = true) {
+        bool changed = false;
+        if (!update_conflicts(candidate, now, changed, replaced ? id : 0)) return false;
+        const auto selected = find(candidate, id);
+        if (selected != candidate.records.end() && selected->conflict_with) {
+            conflicting_id_ = selected->conflict_with;
+            return fail(BookError::Conflict);
+        }
         return true;
     }
     static bool valid_deadline(ClockSample now, std::uint64_t minutes) {
@@ -375,12 +488,32 @@ private:
         return std::find_if(snapshot.records.begin(), snapshot.records.end(),
             [id](const auto& record) { return record.id == id; });
     }
-    bool fail(BookError error) { error_ = error; return false; }
+    bool fail(BookError error) { error_ = error; if (error != BookError::Conflict) conflicting_id_ = 0; return false; }
     bool commit(const ScheduleSnapshot& candidate) {
         if (!storage_.save(candidate)) return fail(BookError::Storage);
         snapshot_ = candidate;
+        conflicting_id_ = 0;
         error_ = BookError::None;
         return true;
+    }
+
+public:
+    // Getter for theme preference
+    unsigned get_theme() const {
+        return snapshot_.theme;
+    }
+
+    // Setter for theme preference
+    bool set_theme(unsigned theme) {
+        if (theme > 2) return false;
+        auto candidate = snapshot_;
+        candidate.theme = theme;
+        return commit(candidate);
+    }
+
+    // Getter for sound enabled
+    bool get_sound_enabled() const {
+        return snapshot_.sound_enabled;
     }
     ScheduleStorage& storage_;
     Calendar* calendar_ = nullptr;
@@ -388,6 +521,8 @@ private:
     std::map<std::uint64_t, std::uint64_t> deadlines_;
     bool ready_ = false;
     BookError error_ = BookError::NotReady;
+    std::uint64_t conflicting_id_ = 0;
+    ClockSample last_now_{};
 };
 
 } // namespace power_timer

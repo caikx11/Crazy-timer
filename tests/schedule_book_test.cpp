@@ -413,10 +413,10 @@ void reject_input_and_capacity_without_loss() {
     }
     check(book.create(Action::Shutdown, L"10080", {100000, 0}), "upper duration bound accepted");
     for (int i = 2; i < 1000; ++i)
-        check(book.create(Action::Sleep, L"1", {100000, 0}), "up to 1000 records accepted");
+        check(book.create(Action::Sleep, std::to_wstring(i + 1), {100000, 0}), "up to 1000 records accepted");
     check(!book.create(Action::Sleep, L"1", {100000, 0}) && book.list().size() == 1000 &&
           book.error() == BookError::InvalidInput, "capacity failure preserves all records");
-    check(book.erase(500) && book.create(Action::Sleep, L"1", {100000, 0}) &&
+    check(book.erase(500) && book.create(Action::Sleep, L"1001", {100000, 0}) &&
           book.list().back().id == 1001, "deleted IDs never reused");
     for (const bool schedule_id_exhausted : {false, true}) {
         MemoryStorage exhausted;
@@ -593,7 +593,168 @@ void dispatch_tolerance() {
               "normal dispatch tolerates exactly five seconds, never more");
     }
 }
+void coincident_commands_preserve_previous_schedule() {
+    MemoryStorage storage;
+    TestCalendar calendar;
+    ScheduleBook book(storage, calendar);
+    check(book.initialize({0,0}) && book.create(Action::Sleep,L"1",{0,0}), "prepare conflict command");
+    const auto previous = storage.data.snapshot;
+    check(!book.create_once(Action::Shutdown,{1970,1,1,0,1},{0,0}) &&
+          book.error() == BookError::Conflict && book.conflicting_id() == 1 &&
+          book.list().size() == 1 && storage.data.snapshot.next_id == previous.next_id &&
+          storage.data.snapshot.next_occurrence_id == previous.next_occurrence_id,
+          "same UTC rejects other action without consuming identities or replacing storage");
+    check(book.create(Action::Hibernate,L"2",{0,0}) && book.list().back().id == 2,
+          "successful command clears conflict and uses unconsumed identity");
+    check(!book.edit(2,Action::Sleep,L"1",{0,0}) && book.conflicting_id() == 1 &&
+          book.list()[1].minutes == 2 && book.list()[1].occurrence_id == 2,
+          "conflicting edit preserves previous configuration");
+}
+void weekly_conflicts_include_future_days_and_exceptions() {
+    MemoryStorage storage;
+    TestCalendar calendar;
+    ScheduleBook book(storage,calendar);
+    check(book.initialize({0,0}) && book.create_weekly(Action::Sleep,16,1,{0,0}), "Thursday weekly at epoch");
+    check(!book.create_weekly(Action::Shutdown,24,1,{0,0}) && book.error() == BookError::Conflict &&
+          book.conflicting_id() == 1, "overlap on Thursday is conflict even with earlier Wednesday occurrence next week");
+    check(book.create_weekly(Action::Shutdown,8,1,{0,0}), "distinct weekdays do not conflict");
+    check(!book.create_once(Action::Hibernate,{1970,1,8,0,1},{0,0}) && book.conflicting_id() == 1,
+          "finite occurrence conflicts with future weekly date beyond its next due");
+    check(book.cancel(1) && book.create_once(Action::Sleep,{1970,1,1,0,1},{0,0}),
+          "cancelled weekly occurrence leaves its consumed civil date available");
+    check(book.set_paused(2,true,{0,0}) && book.create_weekly(Action::Hibernate,8,1,{0,0}),
+          "paused recurrence does not reserve future days");
+    check(!book.set_paused(2,false,{0,0}) && book.error() == BookError::Conflict &&
+          book.conflicting_id() == 4 && book.list()[1].paused,
+          "reactivation rejects future overlap while preserving pause");
+    check(book.edit_weekly(2,Action::Shutdown,8,2,{0,0}) && book.list()[1].paused &&
+          book.set_paused(2,false,{0,0}), "paused edit remains paused and adjusted reactivation succeeds");
+}
+void recovered_collisions_suspend_every_member() {
+    MemoryStorage storage;
+    storage.data = {LoadStatus::Loaded, {5,5,{
+        {1,1,Action::Sleep,1,60000,false,OccurrenceState::Scheduled},
+        {2,2,Action::Shutdown,1,60000,false,OccurrenceState::Scheduled},
+        {3,3,Action::Hibernate,1,60000,false,OccurrenceState::Scheduled},
+        {4,4,Action::Sleep,1,60001,false,OccurrenceState::Scheduled}}}};
+    ScheduleBook book(storage);
+    check(book.initialize({0,0}) && book.error() == BookError::None &&
+          book.list()[0].conflict_with == 2 && book.list()[1].conflict_with == 1 &&
+          book.list()[2].conflict_with == 1 && !book.list()[3].conflict_with &&
+          !book.list()[0].paused && storage.data.snapshot.records[2].conflict_with == 1,
+          "legacy three-way duplicates suspend every member durably without choosing winner or pausing");
+    const auto deliveries = book.tick({60001,60001});
+    check(deliveries.size() == 1 && deliveries[0].id == 4 && book.list()[0].conflict_with == 2,
+          "all conflicting actions blocked before batch delivery while one millisecond difference is independent");
+    storage.fail_save = true;
+    check(!book.erase(1) && book.list().size() == 4 && book.list()[1].conflict_with == 1,
+          "failed removal preserves component and saved references");
+    storage.fail_save = false;
+    check(book.erase(1) && book.list()[0].conflict_with == 3 && book.list()[1].conflict_with == 2,
+          "removing first member recalculates remaining three-way links");
+    check(book.cancel(2) && !book.list()[0].conflict_with && !book.list()[1].conflict_with,
+          "cancelling releases both finite reservations transactionally");
+}
+void timezone_collision_blocks_before_any_delivery() {
+    for (const bool reconcile : {false,true}) {
+        MemoryStorage storage;
+        TestCalendar calendar;
+        ScheduleBook book(storage,calendar);
+        check(book.initialize({0,0}) && book.create_once(Action::Sleep,{1970,1,1,1,0},{0,0}) &&
+              book.create_weekly(Action::Shutdown,127,120,{0,0}) &&
+              book.create_once(Action::Hibernate,{1970,1,1,0,30},{0,0}), "prepare timezone collision and independent due");
+        calendar.offset_minutes = 60;
+        if (reconcile) check(book.reconcile({1800000,1800000}), "explicit timezone event reconciles");
+        const auto effects = book.tick({1800000,1800000});
+        check(book.list()[0].conflict_with == 2 && book.list()[1].conflict_with == 1 &&
+              !book.list()[0].paused && !book.list()[1].paused &&
+              (reconcile ? effects.empty() : effects.size() == 1 && effects[0].id == 3),
+              "timezone collision is found without host notification before independent effects");
+        check(book.tick({3600000,3600000}).empty(), "neither action wins at common deadline");
+    }
+    MemoryStorage storage;
+    TestCalendar calendar;
+    ScheduleBook book(storage,calendar);
+    check(book.initialize({0,0}) && book.create_once(Action::Sleep,{1970,1,1,1,0},{0,0}) &&
+          book.create_weekly(Action::Shutdown,127,120,{0,0}) &&
+          book.create(Action::Hibernate,L"30",{0,0}), "prepare suspension persistence failure");
+    calendar.offset_minutes = 60;
+    storage.fail_save = true;
+    check(book.tick({1800000,1800000}).empty() && !book.writable() && book.error() == BookError::Storage &&
+          !book.list()[0].conflict_with && book.list()[2].state == OccurrenceState::Scheduled,
+          "failed conflict persistence blocks the entire batch and preserves all prior records");
+}
+void collision_at_timezone_changed_deadline_never_selects_winner() {
+    MemoryStorage storage;
+    TestCalendar calendar;
+    ScheduleBook book(storage,calendar);
+    check(book.initialize({0,0}) && book.create_once(Action::Sleep,{1970,1,1,1,0},{0,0}) &&
+          book.create_weekly(Action::Shutdown,127,120,{0,0}), "prepare timezone change at due instant");
+    calendar.offset_minutes = 60;
+    check(book.tick({3600000,3600000}).empty() && book.list()[0].conflict_with == 2 &&
+          book.list()[1].conflict_with == 1,
+          "timezone change at exact due marks both before weekly expiration could leave a winner");
+}
+void forced_shutdown_is_orthogonal_to_conflicts_and_preserved_on_edit() {
+    MemoryStorage storage;
+    storage.data = {LoadStatus::Loaded,{2,2,{{1,1,Action::Shutdown,1,60000,false,OccurrenceState::Scheduled}}}};
+    storage.data.snapshot.records[0].force_shutdown = true;
+    TestCalendar calendar;
+    ScheduleBook book(storage,calendar);
+    check(book.initialize({0,0}) && !book.create(Action::Shutdown,L"1",{0,0}) &&
+          book.error() == BookError::Conflict, "normal and forced shutdown reserve the same UTC instant");
+    check(book.edit_once(1,Action::Shutdown,{1970,1,1,0,2},{0,0}) && book.list()[0].force_shutdown &&
+          book.edit_weekly(1,Action::Shutdown,127,3,{0,0}) && book.list()[0].force_shutdown &&
+          book.edit(1,Action::Shutdown,L"4",{0,0}) && book.list()[0].force_shutdown,
+          "editing a shutdown retains explicit existing force preference across modes");
+    check(book.edit_weekly(1,Action::Sleep,127,5,{0,0}) && !book.list()[0].force_shutdown &&
+          book.edit_once(1,Action::Shutdown,{1970,1,1,0,6},{0,0}) && !book.list()[0].force_shutdown,
+          "changing to sleep clears force and returning to shutdown never silently reenables it");
+}
+void monotonic_projection_has_no_stale_or_epoch_false_conflicts() {
+    {
+        MemoryStorage storage;
+        TestCalendar calendar;
+        ScheduleBook book(storage,calendar);
+        check(book.initialize({0,0}) && book.create(Action::Sleep,L"1",{0,0}) &&
+              book.create_once(Action::Hibernate,{1970,1,1,0,1},{30000,0}),
+              "manual clock change projects duration before candidate validation instead of stale saved UTC");
+        check(book.tick({60000,30000}).size() == 1 && !book.list()[0].conflict_with,
+              "different monotonic projected instant does not block fixed UTC delivery");
+    }
+    {
+        MemoryStorage storage;
+        TestCalendar calendar;
+        ScheduleBook book(storage,calendar);
+        check(book.initialize({0,0}) && book.create(Action::Sleep,L"1",{0,0}) &&
+              book.create_once(Action::Hibernate,{1970,1,1,0,2},{0,0}), "prepare projected collision");
+        check(book.tick({60000,0}).empty() && book.list()[0].conflict_with == 2 &&
+              storage.data.snapshot.records[0].due_utc_ms == 120000,
+              "timer saves projected duration anchor with collision so recovery uses the same instant");
+        ScheduleBook reopened(storage,calendar);
+        check(reopened.initialize({60001,0}) && reopened.list()[0].conflict_with == 2 &&
+              reopened.remaining_ms(1,{60001,0}) == 59999,
+              "collision and monotonic remaining time agree after recovery");
+    }
+    {
+        MemoryStorage storage;
+        ScheduleBook book(storage);
+        check(book.initialize({0,0}) && book.create(Action::Sleep,L"1",{0,0}) &&
+              book.create(Action::Hibernate,L"2",{0,0}), "prepare two pre-epoch projections");
+        const auto effects = book.tick({0,120001});
+        check(effects.size() == 1 && effects[0].id == 2 && !book.list()[0].conflict_with &&
+              !book.list()[1].conflict_with && book.list()[0].state == OccurrenceState::Expired,
+              "distinct elapsed deadlines before UTC epoch cannot become a fabricated collision at zero");
+    }
+}
 int main() {
+    monotonic_projection_has_no_stale_or_epoch_false_conflicts();
+    forced_shutdown_is_orthogonal_to_conflicts_and_preserved_on_edit();
+    collision_at_timezone_changed_deadline_never_selects_winner();
+    recovered_collisions_suspend_every_member();
+    timezone_collision_blocks_before_any_delivery();
+    weekly_conflicts_include_future_days_and_exceptions();
+    coincident_commands_preserve_previous_schedule();
     calendar_validation_and_limit_failures();
     editing_modes_and_recovery_tolerance();
     recurring_calendar_boundaries();

@@ -18,12 +18,15 @@ inline bool valid_occurrence_state(OccurrenceState state) {
 inline bool valid_snapshot(const ScheduleSnapshot& snapshot) {
     if (snapshot.next_id == 0 || snapshot.next_occurrence_id == 0 ||
         snapshot.records.size() > max_schedule_records) return false;
+    // sound_enabled is a bool, no validation needed beyond type safety
     std::unordered_set<std::uint64_t> ids, occurrences;
     for (const auto& record : snapshot.records) {
         if (record.id == 0 || record.id >= snapshot.next_id || record.occurrence_id == 0 ||
             record.occurrence_id >= snapshot.next_occurrence_id || !ids.insert(record.id).second ||
             !occurrences.insert(record.occurrence_id).second || !valid_action(record.action) ||
-            !valid_occurrence_state(record.state) || !valid_occurrence_state(record.last_state)) return false;
+            !valid_occurrence_state(record.state) || !valid_occurrence_state(record.last_state) ||
+            (record.force_shutdown && record.action != Action::Shutdown) ||
+            record.conflict_with >= snapshot.next_id || record.conflict_with == record.id) return false;
         if (record.kind == ScheduleKind::Duration) {
             if (record.minutes < Scheduler::min_minutes || record.minutes > Scheduler::max_minutes ||
                 !(record.civil == CivilTime{})) return false;

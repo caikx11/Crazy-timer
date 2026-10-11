@@ -29,7 +29,7 @@ $arguments = @(
     '-std=c++23', '-O2', '-shared', '-Wall', '-Wextra',
     '-DUNICODE', '-D_UNICODE', '-DWINVER=0x0A00', '-D_WIN32_WINNT=0x0A00',
     '-D_WIN32_IE=0x0A00', '-DNTDDI_VERSION=0x0A000008', '-D__USE_MINGW_ANSI_STDIO=0',
-    '-DWH_MOD', '-DWH_MOD_ID=L"local@power-timer-simulation"', '-DWH_MOD_VERSION=L"0.3.0"',
+    '-DWH_MOD', '-DWH_MOD_ID=L"local@power-timer-simulation"', '-DWH_MOD_VERSION=L"0.4.0"',
     $engine, '-x', 'c++', $source, '-include', (Join-Path $WindhawkPath 'Compiler/include/windhawk_api.h'),
     '-target', 'i686-w64-mingw32', '-Wl,--export-all-symbols', '-o', $binary,
     '-lshell32', '-lcomctl32', '-lgdi32', '-ladvapi32'

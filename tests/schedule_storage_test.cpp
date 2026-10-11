@@ -26,11 +26,11 @@ int main(int argc, char** argv) {
     CHECK(actual.snapshot.records.front().due_utc_ms == 901000);
     CHECK(actual.snapshot.records.front().action == Action::Sleep);
     CHECK(encode_snapshot(expected) ==
-        "POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0\n");
+        "POWER_TIMER 4\n2 2 1 0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n");
     {
         std::ifstream in(file, std::ios::binary);
         const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        CHECK(saved.starts_with("POWER_TIMER 2\n"));
+        CHECK(saved.starts_with("POWER_TIMER 4\n"));
     }
     // A version-1 duration loads with the new fields at their neutral values.
     const std::string legacy = "POWER_TIMER 1\n2 2 1\n1 1 1 15 901000 0 0\n";
@@ -43,8 +43,10 @@ int main(int argc, char** argv) {
     CHECK(migrated->records.front().civil_high_water == 0);
     CHECK(migrated->records.front().last_occurrence_id == 0);
     CHECK(migrated->records.front().last_state == OccurrenceState::Scheduled);
+    CHECK(migrated->records.front().conflict_with == 0);
+    CHECK(!migrated->records.front().force_shutdown);
     const auto migrated_data = encode_snapshot(*migrated);
-    CHECK(migrated_data.starts_with("POWER_TIMER 2\n"));
+    CHECK(migrated_data.starts_with("POWER_TIMER 4\n"));
     const auto migrated_again = decode_snapshot(migrated_data);
     CHECK(migrated_again.has_value());
     CHECK(migrated_again->records.front().minutes == 15);
@@ -74,7 +76,7 @@ int main(int argc, char** argv) {
     {
         std::ifstream in(legacy_file, std::ios::binary);
         const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        CHECK(saved.starts_with("POWER_TIMER 2\n"));
+        CHECK(saved.starts_with("POWER_TIMER 4\n"));
     }
     CHECK(legacy_storage.load().status == LoadStatus::Loaded);
     CHECK(legacy_storage.load().snapshot.records.front().paused);
@@ -135,7 +137,96 @@ int main(int argc, char** argv) {
         "POWER_TIMER 2\n3 9 1\n2 8 2 0 1791592200000 1 0 2 2026 10 9 21 30 127 1290 202610082130 7 2\n";
     CHECK(decode_snapshot(once_v2).has_value());
     CHECK(decode_snapshot(weekly_v2).has_value());
-    CHECK(!decode_snapshot("POWER_TIMER 3\n2 2 0\n"));
+    for (const auto& old_bytes : {legacy, canonical_v2}) {
+        const auto migration_file = fixture / (old_bytes == legacy ? "migrate-v1.pt" : "migrate-v2.pt");
+        {
+            std::ofstream out(migration_file, std::ios::binary | std::ios::trunc);
+            out << old_bytes;
+        }
+        FileScheduleStorage migration_storage(migration_file.wstring());
+        auto loaded = migration_storage.load();
+        CHECK(loaded.status == LoadStatus::Loaded);
+        CHECK(loaded.snapshot.records.front().conflict_with == 0);
+        CHECK(!loaded.snapshot.records.front().force_shutdown);
+        loaded.snapshot.records.front().paused = true;
+        HANDLE migration_lock = CreateFileW(migration_file.c_str(), GENERIC_READ, FILE_SHARE_READ,
+            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        CHECK(migration_lock != INVALID_HANDLE_VALUE);
+        CHECK(!migration_storage.save(loaded.snapshot));
+        CHECK(CloseHandle(migration_lock));
+        {
+            std::ifstream in(migration_file, std::ios::binary);
+            const std::string preserved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            CHECK(preserved == old_bytes);
+        }
+        CHECK(migration_storage.save(loaded.snapshot));
+        const auto migrated_file = migration_storage.load();
+        CHECK(migrated_file.status == LoadStatus::Loaded);
+        CHECK(migrated_file.snapshot.records.front().paused);
+        CHECK(migrated_file.snapshot.records.front().conflict_with == 0);
+        CHECK(!migrated_file.snapshot.records.front().force_shutdown);
+        {
+            std::ifstream in(migration_file, std::ios::binary);
+            const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            CHECK(saved.starts_with("POWER_TIMER 4\n"));
+        }
+    }
+    auto forced = expected;
+    forced.records.front().action = Action::Shutdown;
+    forced.records.front().force_shutdown = true;
+    const auto force_file = fixture / "force.pt";
+    FileScheduleStorage force_storage(force_file.wstring());
+    CHECK(force_storage.save(forced));
+    CHECK(force_storage.load().status == LoadStatus::Loaded);
+    CHECK(force_storage.load().snapshot.records.front().force_shutdown);
+    ScheduleSnapshot conflicts{4, 4, {
+        {1, 1, Action::Shutdown, 15, 901000, false, OccurrenceState::Scheduled},
+        {2, 2, Action::Sleep, 15, 901000, false, OccurrenceState::Scheduled},
+        {3, 3, Action::Hibernate, 15, 961000, true, OccurrenceState::Scheduled}
+    }};
+    conflicts.records[0].conflict_with = 2;
+    conflicts.records[0].force_shutdown = true;
+    conflicts.records[1].conflict_with = 1;
+    const auto conflict_file = fixture / "conflicts.pt";
+    FileScheduleStorage conflict_storage(conflict_file.wstring());
+    CHECK(conflict_storage.save(conflicts));
+    const auto restored_conflicts = FileScheduleStorage(conflict_file.wstring()).load();
+    CHECK(restored_conflicts.status == LoadStatus::Loaded);
+    CHECK(restored_conflicts.snapshot.next_id == 4);
+    CHECK(restored_conflicts.snapshot.next_occurrence_id == 4);
+    CHECK(restored_conflicts.snapshot.records.size() == 3);
+    CHECK(restored_conflicts.snapshot.records[0].id == 1);
+    CHECK(restored_conflicts.snapshot.records[0].conflict_with == 2);
+    CHECK(restored_conflicts.snapshot.records[0].force_shutdown);
+    CHECK(restored_conflicts.snapshot.records[1].id == 2);
+    CHECK(restored_conflicts.snapshot.records[1].conflict_with == 1);
+    CHECK(!restored_conflicts.snapshot.records[1].force_shutdown);
+    CHECK(restored_conflicts.snapshot.records[2].id == 3);
+    CHECK(restored_conflicts.snapshot.records[2].paused);
+    CHECK(restored_conflicts.snapshot.records[2].conflict_with == 0);
+    for (const auto invalid_force : {
+        "2", "01", "18446744073709551616", "-1", "1 0", "1\r"
+    }) {
+        CHECK(!decode_snapshot(
+            "POWER_TIMER 3\n2 2 1\n1 1 0 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+            + std::string(invalid_force) + "\n"));
+    }
+    CHECK(!decode_snapshot(
+        "POWER_TIMER 3\n2 2 1\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1\n"));
+    const std::string v3_prefix =
+        "POWER_TIMER 3\n2 2 1\n1 1 0 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+    for (const auto invalid_suffix : {
+        "1 0\n",                    // a conflict cannot refer to the same ID
+        "2 0\n",                    // a conflict cannot refer beyond next_id
+        "01 0\n",                   // noncanonical conflict ID
+        "18446744073709551616 0\n", // overflowing conflict ID
+        "-1 0\n",                   // signed conflict ID
+        "0\n",                     // missing force flag
+        "0 0 0\n"                 // extra field
+    }) CHECK(!decode_snapshot(v3_prefix + invalid_suffix));
+    CHECK(!decode_snapshot(
+        "POWER_TIMER 3\n2 2 1\n1 1 3 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n"));
+    CHECK(decode_snapshot("POWER_TIMER 3\n2 2 0\n"));
     CHECK(!decode_snapshot("POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0\n"));
     CHECK(!decode_snapshot(canonical_v2 + "tail"));
     const std::string v2_record_prefix = "POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0 ";
