@@ -233,6 +233,10 @@ class Panel {
         if (background_) DeleteObject(background_);
         background_ = CreateSolidBrush(bg_);
         if (window_) RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+        if (list_) {
+            ListView_SetTextColor(list_, ink_);
+            ListView_SetTextBkColor(list_, bg_);
+        }
     }
     void controls() {
         add(L"STATIC", text::brand, 0, 0, 24, 20, 360, 36, 1);
@@ -660,9 +664,9 @@ class Panel {
     void draw_button(const DRAWITEMSTRUCT& draw) {
         const bool primary = draw.CtlID == schedule_id;
         const bool disabled = (draw.itemState & ODS_DISABLED) != 0;
-        const COLORREF fill = primary && !disabled ? accent_ : high_contrast_ ? bg_ : RGB(233, 239, 248);
+        const COLORREF fill = primary && !disabled ? accent_ : high_contrast_ ? GetSysColor(COLOR_BTNFACE) : RGB(233, 239, 248);
         const COLORREF foreground = disabled ? GetSysColor(COLOR_GRAYTEXT) : primary ?
-            (high_contrast_ ? GetSysColor(COLOR_HIGHLIGHTTEXT) : RGB(255, 255, 255)) : ink_;
+            (high_contrast_ ? GetSysColor(COLOR_BTNTEXT) : RGB(255, 255, 255)) : ink_;
         HBRUSH brush = CreateSolidBrush(fill);
         HPEN pen = CreatePen(PS_SOLID, 1, fill);
         const auto old_brush = SelectObject(draw.hDC, brush);
