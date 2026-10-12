@@ -22,5 +22,7 @@ Nada aqui foi decidido ou publicado. Itens abertos permanecem abertos até o usu
 - [ ] Ensaio manual deliberado, resultados separados dos testes simulados (ADR 008/009).
 
 ## Catálogo Windhawk
-- [ ] Conferir o formato exigido pelo catálogo (cabeçalho `@id`, `@name`, `@version`, `@author`, `@license`) contra a documentação atual.
+- [x] Formato conferido em 12/10/2026 (wiki "Creating a new mod" e README de windhawk-mods): cabeçalho com `@id` (minúsculas, dígitos, hífen), `@name`, `@description`, `@version` (sempre crescente), `@author`, `@github` (obrigatório e igual ao autor do PR), `@license`, `@include`, `@architecture`; bloco `==WindhawkModReadme==` em Markdown (imagens só de i.imgur.com ou raw.githubusercontent.com). Envio é um PR com um único arquivo `mods/<id>.wh.cpp`, id igual ao do arquivo.
+- [x] Cabeçalho com `@github` e readme (o que faz, como usar, aviso de Windows 10 não testado e de somente simulação) adicionados em `src/windows/mod_entry.cpp`.
+- [ ] Decidir se um mod que **só simula** deve ir ao catálogo agora; o catálogo espera mods que fazem algo real. Considerar publicar só quando houver executor real.
 - [ ] Publicar somente após as decisões acima. Aceitação dos mantenedores não é garantida.
