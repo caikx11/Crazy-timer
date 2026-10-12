@@ -5,7 +5,7 @@
 **Blocked by:** 09, 10, 11.
 
 **Status:** ready-for-agent
-**Execution:** open
+**Execution:** done para Windows 11 (relato do usuário, 12/10/2026). Windows 10 e sessões simultâneas NÃO verificados; sem teste real de energia.
 
 **Histórias da especificação:** 1, 2, 3, 6, 15, 36, 39.
 
