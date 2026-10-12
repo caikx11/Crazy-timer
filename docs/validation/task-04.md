@@ -28,4 +28,4 @@ Preview e DLL x86/fonte única 0.3.0 compilados. Preview usa warnings como erros
 
 Mudanças de fuso e recuperação de prazos vencidos foram ensaiadas com dependências controladas; não houve alteração do fuso real, suspensão real ou energia real. A correção da invalidação visual da lista nos eventos Windows foi revisada por leitura, não por troca real de fuso. Matriz Windows 10/11, DPI/teclado completa e integração do candidato final continuam na tarefa 12.
 
-O mod instalado no Windhawk continua 0.1.0. A fonte 0.3.0 está pronta em build/mod/crazy-time-simulation.wh.cpp, mas o editor elevado não aceita os inputs de Computer Use disponíveis; não houve atualização da instalação. Esta evidência do preview não equivale a comprovação da nova versão no engine.
+O mod instalado no Windhawk continua 0.1.0. A fonte 0.3.0 está pronta em build/mod/power-timer-simulation.wh.cpp, mas o editor elevado não aceita os inputs de Computer Use disponíveis; não houve atualização da instalação. Esta evidência do preview não equivale a comprovação da nova versão no engine.

@@ -18,7 +18,7 @@ Nada aqui foi decidido ou publicado. Itens abertos permanecem abertos até o usu
 - [ ] CI remoto verde (`.github/workflows/ci.yml`, só suítes portáteis).
 
 ## Antes de qualquer ação real de energia
-- [ ] Executor real implementado e revisado (hoje só `SimulatedBackend`).
+- [x] Executor real implementado (`WindowsPowerBackend`, desligado por padrão); **falta** revisão e ensaio manual no Windows 11 (suspender, hibernar, desligar normal e forçado).
 - [ ] Ensaio manual deliberado, resultados separados dos testes simulados (ADR 008/009).
 
 ## Catálogo Windhawk

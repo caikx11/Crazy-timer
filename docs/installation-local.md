@@ -11,14 +11,14 @@ Na raiz do projeto, PowerShell 7:
 ./scripts/build-mod.ps1
 ```
 
-O segundo script gera `build/mod/crazy-time-simulation.wh.cpp` e uma DLL de conferência. A instalação pelo editor recompila a fonte; não é necessário copiar manualmente a DLL nem editar o registro.
+O segundo script gera `build/mod/crazy-time.wh.cpp` e uma DLL de conferência. A instalação pelo editor recompila a fonte; não é necessário copiar manualmente a DLL nem editar o registro.
 
 ## No Windhawk 1.7.3
 
 1. Abrir o Windhawk e escolher criar um novo mod.
-2. Copiar todo o conteúdo de `build/mod/crazy-time-simulation.wh.cpp` para substituir o template do novo mod.
-3. Conferir o id `crazy-time-simulation` e o nome Power Timer (Simulação). Não substituir nenhum outro mod.
-4. Compilar pelo botão do editor ou Ctrl+B. O id local usado pelo engine será `local@crazy-time-simulation`.
+2. Copiar todo o conteúdo de `build/mod/crazy-time.wh.cpp` para substituir o template do novo mod.
+3. Conferir o id `crazy-time` e o nome Power Timer (Simulação). Não substituir nenhum outro mod.
+4. Compilar pelo botão do editor ou Ctrl+B. O id local usado pelo engine será `local@crazy-time`.
 5. Ativar somente esse mod e observar painel/ícone. A opção Abrir painel ao iniciar está ligada por padrão.
 
 Nesta máquina a janela Windhawk executa como administrador. A automação atual consegue observá-la, mas não controlá-la. A interação administrativa normal precisa ser feita com o usuário presente. Não foi preparado instalador alternativo nem feita alteração de permissões.

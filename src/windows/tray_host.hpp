@@ -16,6 +16,7 @@
 #include <atomic>
 #include <algorithm>
 #include <cmath>
+#include <cwchar>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -28,9 +29,27 @@
 #include "../strings_en.hpp"
 #include "../warning_tracker.hpp"
 #include "../power_executor.hpp"
+#include "windows_power_backend.hpp"
 
 namespace power_timer::windows {
+// True when the mod setting "real actions" is on. Simulation wording is then replaced.
+inline bool real_mode = false;
+struct RealText { const wchar_t* sim_pt; const wchar_t* pt; const wchar_t* en; };
+inline const RealText real_texts[] = {
+    {text::title, L"Crazy Time", L"Crazy Time"},
+    {text::simulation, L"AÇÕES REAIS", L"REAL ACTIONS"},
+    {text::simulation_note, L"ATENÇÃO: o computador será desligado, suspenso ou hibernado na hora.", L"WARNING: the computer will shut down, sleep or hibernate on schedule."},
+    {text::settings_note, L"AÇÃO REAL · Duração e ação são configuradas neste painel.", L"REAL ACTION · Duration and action are configured in this panel."},
+    {text::schedule, L"Agendar ação", L"Schedule action"},
+    {text::active, L"Ação agendada", L"Action scheduled"},
+    {text::completed, L"Ação solicitada", L"Action requested"},
+    {text::completed_detail, L"Solicitação enviada ao Windows.", L"Request sent to Windows."},
+    {text::cancelled_detail, L"Você pode programar uma nova ação.", L"You can schedule a new action."},
+};
 inline const wchar_t* get_text(unsigned locale, const wchar_t* pt_br, const wchar_t* en) {
+    if (real_mode)
+        for (const auto& item : real_texts)
+            if (wcscmp(pt_br, item.sim_pt) == 0) return locale == 1 ? item.en : item.pt;
     return locale == 1 ? en : pt_br;
 }
 inline constexpr wchar_t window_class[] = L"PowerTimer.Simulation.Panel";
@@ -126,7 +145,9 @@ class Panel {
     HFONT fonts_[4]{};
     HBRUSH background_{}, field_brush_{};
     HICON icon_{};
-    SimulatedBackend backend_;
+    SimulatedBackend simulated_backend_;
+    WindowsPowerBackend real_backend_;
+    PowerBackend& backend() { return real_mode ? static_cast<PowerBackend&>(real_backend_) : simulated_backend_; }
     HWND force_{};
     std::vector<std::pair<HWND, std::pair<const wchar_t*, const wchar_t*>>> localized_;
     bool force_on_ = false;
@@ -575,7 +596,7 @@ class Panel {
         const auto now = clock_sample();
         for (const auto& delivery : book_.tick(now)) {
             if (log_message) log_message(get_text(locale_, text::completed_detail, text_en::completed_detail));
-            const auto exec = execute_power_action(backend_, delivery.action, delivery.force);
+            const auto exec = execute_power_action(backend(), delivery.action, delivery.force);
             if (exec.status != ExecStatus::Accepted) {
                 // Intent stays Uncertain: never retried, next weekly occurrence untouched.
                 notify(get_text(locale_, text::state_uncertain, text_en::state_uncertain),
@@ -690,7 +711,7 @@ class Panel {
             const auto action = selected_action();
             const auto civil = selected_civil();
             bool ok = false;
-            if (backend_.query().of(action) != Availability::Available) {
+            if (backend().query().of(action) != Availability::Available) {
                 set_text(error_, get_text(locale_, text::power_unavailable, text_en::power_unavailable));
                 return;
             }
@@ -1198,7 +1219,8 @@ inline void stop() {
     if (stop_event) { CloseHandle(stop_event); stop_event = nullptr; }
     initialized.store(false);
 }
-inline bool start(bool visible, void (*logger)(const wchar_t*) = nullptr, bool dedicated = false) {
+inline bool start(bool visible, void (*logger)(const wchar_t*) = nullptr, bool dedicated = false, bool real_actions = false) {
+    real_mode = real_actions;
     show_on_start = visible;
     dedicated_process = dedicated;
     user_requested_exit.store(false);

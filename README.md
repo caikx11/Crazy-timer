@@ -12,7 +12,7 @@ Power Timer programa desligar, suspender ou hibernar o Windows. Cada agendamento
 - Ações indisponíveis neste computador são explicadas e não são agendadas.
 - Português e inglês; tema automático, claro ou escuro; alto contraste.
 
-**Esta versão funciona exclusivamente em simulação.** Nenhuma ação de energia real é executada: o alvo é um `SimulatedBackend` isolado do executor real, que ainda não existe.
+**Ações reais vêm desligadas.** Por padrão o mod apenas simula (o alvo é um `SimulatedBackend`). Ligando **Executar ações reais de energia** nas configurações do mod e reativando-o, o computador realmente desliga, suspende ou hiberna (`WindowsPowerBackend`). Esse caminho real ainda não foi testado numa máquina: teste primeiro com uma suspensão curta.
 
 ![Formulário semanal e lista recuperada na prévia](docs/screenshots/task04-calendar.png)
 
