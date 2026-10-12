@@ -70,18 +70,18 @@ O [template instalado/oficial](https://github.com/ramensoftware/windhawk/blob/v1
 
 Pesquisa adicional solicitada após verificar que a UI está elevada e não responde ao controle disponível. O mecanismo abaixo é uma reprodução do armazenamento interno verificado da extensão, **não uma CLI pública de instalação**. Nenhuma instalação executada nesta pesquisa.
 
-### Destinos exatos para `local@power-timer-simulation`
+### Destinos exatos para `local@crazy-time-simulation`
 
 Na instalação não portátil verificada, os destinos são:
 
 | Item | Destino |
 | --- | --- |
-| Fonte UTF-8 | `C:/ProgramData/Windhawk/ModsSource/local@power-timer-simulation.wh.cpp` |
+| Fonte UTF-8 | `C:/ProgramData/Windhawk/ModsSource/local@crazy-time-simulation.wh.cpp` |
 | DLL x86 | `C:/ProgramData/Windhawk/Engine/Mods/32/<LibraryFileName>` |
-| Configuração | `HKLM/SOFTWARE/Windhawk/Engine/Mods/local@power-timer-simulation`, **Registry64** |
+| Configuração | `HKLM/SOFTWARE/Windhawk/Engine/Mods/local@crazy-time-simulation`, **Registry64** |
 | Settings | subchave `Settings` dentro da configuração acima |
 
-A extensão usa `KEY_WOW64_64KEY` explicitamente. Não usar `WOW6432Node`. `LibraryFileName` é apenas o basename, não caminho absoluto. O compilador oficial gera `<id-interno>_<version>_<aleatório de seis dígitos>.dll`, portanto `local@power-timer-simulation_0.1_<seis dígitos>.dll` é o padrão da extensão. O engine combina esse nome com Mods/32, conforme a arquitetura do processo. A fonte mantém `@id power-timer-simulation` sem o prefixo `local@`, enquanto a macro compilada `WH_MOD_ID` contém `local@power-timer-simulation`.
+A extensão usa `KEY_WOW64_64KEY` explicitamente. Não usar `WOW6432Node`. `LibraryFileName` é apenas o basename, não caminho absoluto. O compilador oficial gera `<id-interno>_<version>_<aleatório de seis dígitos>.dll`, portanto `local@crazy-time-simulation_0.1_<seis dígitos>.dll` é o padrão da extensão. O engine combina esse nome com Mods/32, conforme a arquitetura do processo. A fonte mantém `@id crazy-time-simulation` sem o prefixo `local@`, enquanto a macro compilada `WH_MOD_ID` contém `local@crazy-time-simulation`.
 
 Fontes: [modSourceUtils.ts](https://github.com/ramensoftware/windhawk/blob/v1.7.3/src/vscode-windhawk/src/utils/modSourceUtils.ts#L50), [compilerUtils.ts](https://github.com/ramensoftware/windhawk/blob/v1.7.3/src/vscode-windhawk/src/utils/compilerUtils.ts#L422), [modConfigUtils.ts](https://github.com/ramensoftware/windhawk/blob/v1.7.3/src/vscode-windhawk/src/utils/modConfigUtils.ts#L353), [engine storage_manager.cpp](https://github.com/ramensoftware/windhawk/blob/v1.7.3/src/windhawk/engine/storage_manager.cpp#L269).
 

@@ -10,7 +10,7 @@ Responda em pt-BR. Ao retomar, leia PROJECT_CONTEXT.md (estado do trabalho e "On
 
 ## Testes e build (Windows)
 - `powershell -File scripts/test.ps1`: scheduler, livro, armazenamento, calendário, avisos.
-- `powershell -File scripts/build-mod.ps1`: gera `build/mod/power-timer-simulation.wh.cpp` (colar no editor do Windhawk) e a DLL x86. Requer o compilador do Windhawk em `C:\Program Files\Windhawk`.
+- `powershell -File scripts/build-mod.ps1`: gera `build/mod/crazy-time-simulation.wh.cpp` (colar no editor do Windhawk) e a DLL x86. Requer o compilador do Windhawk em `C:\Program Files\Windhawk`.
 - Na nuvem (Linux) só dá para editar e rodar os testes portáteis; o build do mod e a bandeja ficam na máquina do usuário.
 
 ## Arquitetura

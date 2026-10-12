@@ -1,10 +1,10 @@
 // ==WindhawkMod==
-// @id              power-timer-simulation
-// @name            Power Timer (Simulation)
-// @name:pt-BR      Power Timer (Simulação)
+// @id              crazy-time-simulation
+// @name            Crazy Time (Simulation)
+// @name:pt-BR      Crazy Time (Simulação)
 // @description     Schedule simulated power actions from a tray icon. No real power action is performed.
 // @description:pt-BR Agende ações simuladas pelo ícone da barra. Nenhuma ação real de energia é executada.
-// @version         0.4.0
+// @version         0.5.0
 // @author          caikx11
 // @include         windhawk.exe
 // @architecture    x86

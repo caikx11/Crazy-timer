@@ -817,11 +817,20 @@ class Panel {
             use_dark ? RGB(240, 240, 240) : RGB(24, 35, 53);
 
         if (draw.CtlID == force_id) { draw_force(draw, use_dark, disabled); return; }
-        HBRUSH brush = CreateSolidBrush(fill);
-        HPEN pen = CreatePen(PS_SOLID, 1, fill);
+        // Pressed buttons darken; a thin border separates buttons from the page; disabled ones stay flat.
+        const bool pressed = (draw.itemState & ODS_SELECTED) != 0 && !disabled;
+        const auto shade = [](COLORREF c, int delta) {
+            const auto clamp = [](int v) { return v < 0 ? 0 : v > 255 ? 255 : v; };
+            return RGB(clamp(GetRValue(c) + delta), clamp(GetGValue(c) + delta), clamp(GetBValue(c) + delta));
+        };
+        const COLORREF body = pressed ? shade(fill, use_dark ? 22 : -18) : fill;
+        const COLORREF edge = high_contrast_ ? GetSysColor(COLOR_BTNTEXT) : disabled ? fill :
+            primary ? shade(accent_, -40) : use_dark ? RGB(96, 96, 96) : RGB(190, 203, 224);
+        HBRUSH brush = CreateSolidBrush(body);
+        HPEN pen = CreatePen(PS_SOLID, 1, edge);
         const auto old_brush = SelectObject(draw.hDC, brush);
         const auto old_pen = SelectObject(draw.hDC, pen);
-        RoundRect(draw.hDC, draw.rcItem.left, draw.rcItem.top, draw.rcItem.right, draw.rcItem.bottom, px(10), px(10));
+        RoundRect(draw.hDC, draw.rcItem.left, draw.rcItem.top, draw.rcItem.right, draw.rcItem.bottom, px(14), px(14));
         SelectObject(draw.hDC, old_brush); SelectObject(draw.hDC, old_pen);
         DeleteObject(brush); DeleteObject(pen);
 

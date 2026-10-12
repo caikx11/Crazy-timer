@@ -17,9 +17,9 @@ Interface real confirmou início em 1 minuto, aviso final, entrada 0 rejeitada p
 
 ## Integração Windhawk comprovada até aqui
 
-1. Usuário instalou/ativou pelo editor oficial. Fonte `ModsSource/local@power-timer-simulation.wh.cpp` corresponde à fonte gerada após normalizar CRLF/LF e espaço final. Registro lido: Disabled=0, Version=0.1.0, Include=windhawk.exe, Architecture=x86, LibraryFileName=local@power-timer-simulation_0.1.0_530652.dll.
+1. Usuário instalou/ativou pelo editor oficial. Fonte `ModsSource/local@crazy-time-simulation.wh.cpp` corresponde à fonte gerada após normalizar CRLF/LF e espaço final. Registro lido: Disabled=0, Version=0.1.0, Include=windhawk.exe, Architecture=x86, LibraryFileName=local@crazy-time-simulation_0.1.0_530652.dll.
 2. Primeiro painel ainda era do preview independente, que compartilha exclusão de instância com o mod. Preview encerrado pelo menu. Usuário desativou/reativou somente Power Timer.
-3. Inventário de janelas identificou painel com proprietário `C:/Program Files/Windhawk/windhawk.exe`. CIM fora do sandbox confirmou exatamente um processo com `-tool-mod "local@power-timer-simulation"` (PID 1924 nesta execução), nenhum preview. Outros mods não foram alterados.
+3. Inventário de janelas identificou painel com proprietário `C:/Program Files/Windhawk/windhawk.exe`. CIM fora do sandbox confirmou exatamente um processo com `-tool-mod "local@crazy-time-simulation"` (PID 1924 nesta execução), nenhum preview. Outros mods não foram alterados.
 4. Automação operou o painel integrado: duração 1, Iniciar simulação, contagem 00:01:00 e aviso Últimos 60 segundos. X escondeu a janela. [Captura real da contagem](../screenshots/task02-windhawk.png).
 5. Após interrupção do controle pelo usuário com Escape e autorização para retomar, nova observação do mesmo painel confirmou **Simulação concluída** / **Intenção registrada. Nenhuma ação real executada.** O estado final não exigiu clique de confirmação.
 

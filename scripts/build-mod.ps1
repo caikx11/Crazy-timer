@@ -9,8 +9,8 @@ foreach ($file in @($compiler, $engine)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Arquivo não encontrado: $file" }
 }
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-$source = Join-Path $output 'power-timer-simulation.wh.cpp'
-$binary = Join-Path $output 'power-timer-simulation.dll'
+$source = Join-Path $output 'crazy-time-simulation.wh.cpp'
+$binary = Join-Path $output 'crazy-time-simulation.dll'
 # The editor compiles stdin: embed our files in dependency order, then the
 # official stable launcher verbatim. System includes remain intact.
 $parts = @('src/scheduler.hpp', 'src/calendar.hpp', 'src/schedule_types.hpp', 'src/schedule_validation.hpp', 'src/schedule_codec.hpp', 'src/schedule_book.hpp', 'src/strings.hpp', 'src/strings_en.hpp', 'src/warning_tracker.hpp', 'src/power_executor.hpp', 'src/windows/schedule_file.hpp', 'src/windows/local_calendar.hpp', 'src/windows/tray_host.hpp', 'src/windows/mod_entry.cpp')
@@ -27,7 +27,7 @@ foreach ($part in $parts) {
 # Quoted -D values lose their quotes through Windows PowerShell 5.1, so the mod identity
 # comes from a generated prelude instead of editing the official launcher.
 $prelude = Join-Path $output 'mod-identity.h'
-[IO.File]::WriteAllText($prelude, '#define WH_MOD_ID L"local@power-timer-simulation"' + "`n" + '#define WH_MOD_VERSION L"0.4.0"' + "`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($prelude, '#define WH_MOD_ID L"local@crazy-time-simulation"' + "`n" + '#define WH_MOD_VERSION L"0.5.0"' + "`n", [Text.UTF8Encoding]::new($false))
 $arguments = @(
     '-std=c++23', '-O2', '-shared', '-Wall', '-Wextra',
     '-DUNICODE', '-D_UNICODE', '-DWINVER=0x0A00', '-D_WIN32_WINNT=0x0A00',

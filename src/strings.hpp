@@ -2,12 +2,12 @@
 
 namespace power_timer::text {
 // UI catalog boundary. Locale selection and English arrive in ticket 11.
-inline constexpr auto title = L"Power Timer · Simulação";
+inline constexpr auto title = L"Crazy Time · Simulação";
 inline constexpr auto theme_label = L"Tema";
 inline constexpr auto language_label = L"Idioma";
 inline constexpr auto portuguese = L"Português";
 inline constexpr auto english = L"English";
-inline constexpr auto brand = L"Power Timer";
+inline constexpr auto brand = L"Crazy Time";
 inline constexpr auto subtitle = L"Programe uma pausa.";
 inline constexpr auto simulation = L"SIMULAÇÃO";
 inline constexpr auto simulation_note = L"Seu computador não será desligado nesta versão.";
@@ -67,7 +67,7 @@ inline constexpr auto theme_light = L"Claro";
 inline constexpr auto theme_dark = L"Escuro";
 inline constexpr const wchar_t* theme_strings[] = {theme_auto, theme_light, theme_dark};
 inline constexpr auto notification_settings = L"Visibilidade do ícone no Windows";
-inline constexpr auto exit = L"Sair do Power Timer";
+inline constexpr auto exit = L"Sair do Crazy Time";
 inline constexpr auto settings_note = L"SIMULAÇÃO · Duração e ação são configuradas neste painel.";
 inline constexpr auto settings_error = L"Não foi possível abrir as configurações do Windows.";
 inline constexpr auto tray_error = L"Ícone indisponível. Tentando reconectar à barra…";
@@ -111,7 +111,7 @@ inline constexpr auto uncertain_detail = L"Não será repetida automaticamente."
 inline constexpr auto paused_detail = L"O prazo continua correndo enquanto está pausada.";
 inline constexpr auto storage_error = L"Não foi possível salvar. A alteração não foi confirmada.";
 inline constexpr auto invalid_data = L"Arquivo de agendamentos inválido. Dados preservados; edição bloqueada.";
-inline constexpr auto not_ready = L"Armazenamento indisponível. Reabra o Power Timer para tentar novamente.";
+inline constexpr auto not_ready = L"Armazenamento indisponível. Reabra o Crazy Time para tentar novamente.";
 inline constexpr auto missing_record = L"Selecione um agendamento na lista.";
 inline constexpr auto record_input_error = L"Duração inválida ou limite de 1000 agendamentos atingido.";
 }

@@ -1,6 +1,6 @@
 # Tarefa 12 — Roteiro de validação (Windows 11)
 
-Ambiente: Windows 11 (registrar build em `winver`), Windhawk 1.7.x, mod `power-timer-simulation` gerado por `scripts/build-mod.ps1`. **Windows 10 não verificado** (sem máquina disponível). Tudo é simulado: nenhum teste liga/desliga o PC.
+Ambiente: Windows 11 (registrar build em `winver`), Windhawk 1.7.x, mod `crazy-time-simulation` gerado por `scripts/build-mod.ps1`. **Windows 10 não verificado** (sem máquina disponível). Tudo é simulado: nenhum teste liga/desliga o PC.
 
 Marque `[x]` e anote observações. Se algo falhar, anote a mensagem exata/print.
 

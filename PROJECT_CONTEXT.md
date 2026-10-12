@@ -23,7 +23,7 @@ sources/ e AGENTS.md sincronizado superior. Launcher oficial. Proteções/ACL/an
 06 avisos múltiplos e configuração de som, revisão/retro; codec atualizado para versão 4 com campo sound_enabled; testes de armazenamento corrigidos.
 
 # Pendências
-1. Atualizar e validar 0.3.0 no Windhawk. Editor elevado continua sem aceitar cliques/teclas do Computer Use; requer interação do usuário. Fonte pronta build/mod/power-timer-simulation.wh.cpp. Não confundir preview com engine.
+1. Atualizar e validar 0.3.0 no Windhawk. Editor elevado continua sem aceitar cliques/teclas do Computer Use; requer interação do usuário. Fonte pronta build/mod/crazy-time-simulation.wh.cpp. Não confundir preview com engine.
 2. Próxima fatia sugerida: tarefa 12 (validação Windhawk/Windows10/11).
 3. Matriz Windows10/11, multissessão, DPI/acessibilidade e mudança real de fuso na UI permanecem tarefa12. Publicação/CI/portfólio tarefa13; CI/hook ainda ausentes.
 4. Futura tarefa08: verificar consumidor real com efeito substituível e falha no lote; não repetir o laço no teste. Limites de calendário e recuperação estão documentados nos ADRs.
@@ -40,5 +40,6 @@ Caixa 'forçar' agora é owner-draw (draw_force, âmbar, segue tema; estado em f
 Tarefa 13 (parcial, 2026-10-12): README atualizado, .github/workflows/ci.yml (suítes portáteis), docs/release-checklist.md com pendências (nome, licença, autoria, declaração de IA). Aviso de 1 min validado pelo usuário. Falta: screenshots atuais, restante do roteiro Win11, code-review 05–09.
 Code-review 05–09 (2026-10-12): achado confirmado e corrigido — leitor do POWER_TIMER 4 falhava em arquivos antigos sem linhas de tema/idioma (v4 mudou de layout sem bump). Agora detecta pela primeira linha; testes novos em schedule_storage_test.cpp (compilam só no Windows; validado por programa portátil equivalente). Rodar scripts/test.ps1 no Windows.
 Roteiro Win11 marcado como concluído em 2026-10-12 por relato do usuário ('tudo ok'), sem evidências por item; Win10 não verificado. Falta: screenshots finais (claro/escuro, pt/en) para o README e decisões de release (checklist).
+Decisão 2026-10-12: nome definitivo = crazy-time (Crazy Time). Renomeados: id/nome do mod (crazy-time-simulation, v0.5.0), textos pt/en, arquivos de build. MANTIDOS por compatibilidade: pasta de dados %LOCALAPPDATA%/PowerTimer, schedules-v1.dat, mutex e classe de janela. Usuário deve DESATIVAR o mod antigo 'Power Timer' no Windhawk antes de ativar o novo (mesmo arquivo de dados). Botões com borda e estado pressionado (NÃO compilado). Licença ainda não escolhida (usuário pediu opções).
 Próxima etapa: tarefa 12 (validação Windhawk/Windows 10/11, exige o usuário no editor elevado) e 13.
 Pendente: validar visualmente botões da lista (5) em PT/EN e DPI alto; revisão matt-code-review das tarefas 05-07; PROJECT_CONTEXT.md agora versionado para a sessão na nuvem.

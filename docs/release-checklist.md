@@ -3,7 +3,7 @@
 Nada aqui foi decidido ou publicado. Itens abertos permanecem abertos até o usuário confirmar.
 
 ## Decisões que dependem do usuário
-- [ ] **Nome definitivo** do produto ("Power Timer" é provisório).
+- [x] **Nome definitivo**: crazy-time (Crazy Time), decidido em 12/10/2026. Conferir se já existe mod/projeto com o mesmo nome no catálogo e no GitHub antes de publicar.
 - [ ] **Licença** do repositório e do mod (nenhum arquivo LICENSE existe; não escolher sem confirmação).
 - [ ] **Autoria e perfil** a constar no cabeçalho do mod e no catálogo.
 - [ ] **Declaração de assistência por IA**: o código foi escrito com apoio de assistentes de IA; texto final a aprovar.

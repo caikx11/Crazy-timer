@@ -2,8 +2,8 @@
 
 namespace power_timer::text_en {
 // English UI catalog
-inline constexpr auto title = L"Power Timer · Simulation";
-inline constexpr auto brand = L"Power Timer";
+inline constexpr auto title = L"Crazy Time · Simulation";
+inline constexpr auto brand = L"Crazy Time";
 inline constexpr auto subtitle = L"Schedule a break.";
 inline constexpr auto simulation = L"SIMULATION";
 inline constexpr auto simulation_note = L"Your computer will not be shut down in this version.";
@@ -63,7 +63,7 @@ inline constexpr auto theme_light = L"Light";
 inline constexpr auto theme_dark = L"Dark";
 inline constexpr const wchar_t* theme_strings[] = {theme_auto, theme_light, theme_dark};
 inline constexpr auto notification_settings = L"Icon visibility in Windows";
-inline constexpr auto exit = L"Exit Power Timer";
+inline constexpr auto exit = L"Exit Crazy Time";
 inline constexpr auto settings_note = L"SIMULATION · Duration and action are configured in this panel.";
 inline constexpr auto settings_error = L"Could not open Windows settings.";
 inline constexpr auto tray_error = L"Icon unavailable. Trying to reconnect to taskbar…";
@@ -107,7 +107,7 @@ inline constexpr auto uncertain_detail = L"It will not be repeated automatically
 inline constexpr auto paused_detail = L"The deadline continues to run while paused.";
 inline constexpr auto storage_error = L"Could not save. The change was not confirmed.";
 inline constexpr auto invalid_data = L"Schedule file invalid. Data preserved; editing blocked.";
-inline constexpr auto not_ready = L"Storage unavailable. Try reopening Power Timer.";
+inline constexpr auto not_ready = L"Storage unavailable. Try reopening Crazy Time.";
 inline constexpr auto missing_record = L"Select a schedule from the list.";
 inline constexpr auto record_input_error = L"Invalid duration or limit of 1000 schedules reached.";
 inline constexpr auto theme_label = L"Theme";
