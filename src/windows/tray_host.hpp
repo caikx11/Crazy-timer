@@ -124,7 +124,7 @@ class Panel {
     struct Item { HWND handle; int x, y, width, height, font; };
     std::vector<Item> items_;
     HFONT fonts_[4]{};
-    HBRUSH background_{};
+    HBRUSH background_{}, field_brush_{};
     HICON icon_{};
     SimulatedBackend backend_;
     HWND force_{};
@@ -150,7 +150,7 @@ class Panel {
     bool tray_added_ = false;
     std::uint64_t last_tray_try_{};
     COLORREF bg_ = RGB(247, 249, 252), ink_ = RGB(24, 35, 53), accent_ = RGB(0, 120, 212);
-    bool high_contrast_ = false;
+    bool high_contrast_ = false, dark_ = false;
     unsigned theme_value_ = 0; // 0=automatic, 1=light, 2=dark
     unsigned locale_ = 0; // 0=pt-BR, 1=English
 
@@ -278,6 +278,7 @@ class Panel {
         SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0);
         high_contrast_ = (contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
 
+        dark_ = false;
         if (high_contrast_) {
             bg_ = GetSysColor(COLOR_WINDOW);
             ink_ = GetSysColor(COLOR_WINDOWTEXT);
@@ -296,6 +297,7 @@ class Panel {
                     break;
             }
 
+            dark_ = use_dark;
             if (use_dark) {
                 // Dark theme colors
                 bg_ = RGB(30, 30, 30);
@@ -315,6 +317,27 @@ class Panel {
         if (list_) {
             ListView_SetTextColor(list_, ink_);
             ListView_SetTextBkColor(list_, bg_);
+        }
+        apply_control_themes();
+    }
+    // Dark variants of the stock edit/combo/list/scrollbar visuals (Windows 10 1809+ / 11).
+    // Looked up at run time so the mod needs no extra import library; harmless if missing.
+    void apply_control_themes() {
+        using SetWindowThemeFn = HRESULT(WINAPI*)(HWND, LPCWSTR, LPCWSTR);
+        static const auto set_theme = reinterpret_cast<SetWindowThemeFn>(
+            [] { const auto module = LoadLibraryW(L"uxtheme.dll"); return module ? GetProcAddress(module, "SetWindowTheme") : nullptr; }());
+        if (!set_theme) return;
+        const bool dark = dark_ && !high_contrast_;
+        const auto apply = [&](HWND control, const wchar_t* dark_name) {
+            if (control) set_theme(control, dark ? dark_name : nullptr, nullptr);
+        };
+        apply(duration_, L"DarkMode_CFD");
+        for (HWND combo : {action_, kind_, theme_combo_, locale_combo_}) apply(combo, L"DarkMode_CFD");
+        apply(date_, L"DarkMode_CFD");
+        apply(time_, L"DarkMode_CFD");
+        if (list_) {
+            apply(list_, L"DarkMode_Explorer");
+            apply(ListView_GetHeader(list_), L"DarkMode_ItemsView");
         }
     }
     void controls() {
@@ -403,6 +426,7 @@ class Panel {
         add_l(L"STATIC", text::simulation_note, text_en::simulation_note, SS_CENTER, 0, 24, 842, 532, 22, 2);
         add_l(L"STATIC", text::settings_note, text_en::settings_note, SS_CENTER, 0, 24, 872, 532, 22, 2);
         fill_choice_combos();
+        apply_control_themes();
         fonts_and_layout();
         show_kind();
     }
@@ -773,6 +797,7 @@ class Panel {
         const COLORREF edge = high_contrast_ ? GetSysColor(COLOR_BTNTEXT) : use_dark ? RGB(255, 190, 70) : RGB(200, 120, 0);
         const COLORREF text = disabled ? GetSysColor(COLOR_GRAYTEXT) : high_contrast_ ? GetSysColor(COLOR_BTNTEXT) :
             use_dark ? RGB(255, 236, 190) : RGB(60, 38, 0);
+        FillRect(draw.hDC, &draw.rcItem, background_);
         HBRUSH brush = CreateSolidBrush(fill);
         HPEN pen = CreatePen(PS_SOLID, px(2), edge);
         const auto old_brush = SelectObject(draw.hDC, brush);
@@ -811,8 +836,9 @@ class Panel {
         }
 
         const COLORREF fill = primary && !disabled ? accent_ : high_contrast_ ? GetSysColor(COLOR_BTNFACE) :
+            disabled ? (use_dark ? RGB(44, 44, 44) : RGB(238, 241, 246)) :
             use_dark ? RGB(60, 60, 60) : RGB(233, 239, 248);
-        const COLORREF foreground = disabled ? GetSysColor(COLOR_GRAYTEXT) : primary ?
+        const COLORREF foreground = disabled ? (high_contrast_ ? GetSysColor(COLOR_GRAYTEXT) : use_dark ? RGB(130, 130, 130) : RGB(140, 150, 165)) : primary ?
             (high_contrast_ ? GetSysColor(COLOR_BTNTEXT) : RGB(255, 255, 255)) :
             use_dark ? RGB(240, 240, 240) : RGB(24, 35, 53);
 
@@ -826,6 +852,8 @@ class Panel {
         const COLORREF body = pressed ? shade(fill, use_dark ? 22 : -18) : fill;
         const COLORREF edge = high_contrast_ ? GetSysColor(COLOR_BTNTEXT) : disabled ? fill :
             primary ? shade(accent_, -40) : use_dark ? RGB(96, 96, 96) : RGB(190, 203, 224);
+        // Owner-draw leaves the rounded corners untouched: paint the page colour first.
+        FillRect(draw.hDC, &draw.rcItem, background_);
         HBRUSH brush = CreateSolidBrush(body);
         HPEN pen = CreatePen(PS_SOLID, 1, edge);
         const auto old_brush = SelectObject(draw.hDC, brush);
@@ -877,6 +905,7 @@ public:
         if (window_ && IsWindow(window_)) DestroyWindow(window_);
         for (auto font : fonts_) if (font) DeleteObject(font);
         if (background_) DeleteObject(background_);
+        if (field_brush_) DeleteObject(field_brush_);
         if (icon_) DestroyIcon(icon_);
     }
     void show(bool activate) {
@@ -1057,6 +1086,15 @@ public:
                     self->book_.reconcile(clock_sample()); self->refresh();
                 }
                 return 0;
+            case WM_CTLCOLOREDIT:
+            case WM_CTLCOLORLISTBOX:
+                if (self->dark_ && !self->high_contrast_) {
+                    SetTextColor(reinterpret_cast<HDC>(wparam), self->ink_);
+                    SetBkColor(reinterpret_cast<HDC>(wparam), RGB(45, 45, 45));
+                    if (!self->field_brush_) self->field_brush_ = CreateSolidBrush(RGB(45, 45, 45));
+                    return reinterpret_cast<LRESULT>(self->field_brush_);
+                }
+                break;
             case WM_CTLCOLORSTATIC:
                 SetTextColor(reinterpret_cast<HDC>(wparam), self->ink_);
                 SetBkColor(reinterpret_cast<HDC>(wparam), self->bg_);
