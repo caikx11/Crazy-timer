@@ -73,7 +73,12 @@ inline std::optional<ScheduleSnapshot> decode_snapshot(std::string_view data) {
     while (!data.empty() && data[0] == '\n') {
         data.remove_prefix(1);
     }
-    if (v4) {
+    // Early version-4 files (written before theme/locale existed) carry no such
+    // lines; the first record line has spaces, a theme line is a single number.
+    // Version 5 always has them.
+    const auto first_line = data.substr(0, data.find('\n'));
+    const bool has_theme_lines = v5 || (v4 && !data.empty() && first_line.find(' ') == std::string_view::npos);
+    if (has_theme_lines) {
         auto theme_val = number('\n');
         if (!theme_val || *theme_val > 2) return std::nullopt;
         snapshot.theme = *theme_val;
