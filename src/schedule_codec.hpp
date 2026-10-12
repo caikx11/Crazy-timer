@@ -8,10 +8,10 @@ namespace power_timer {
 inline constexpr std::size_t max_schedule_file_bytes = 1024 * 1024;
 // Canonical ASCII: exact spaces/newlines, decimal unsigned integers, no leading
 // zeroes, and no ignored fields/trailing bytes. Versions 1, 2, and 3 remain readable;
-// every successful write uses version 4.
+// every successful write uses version 5.
 inline std::string encode_snapshot(const ScheduleSnapshot& snapshot) {
     if (!valid_snapshot(snapshot)) return {};
-    std::string data = "POWER_TIMER 4\n" + std::to_string(snapshot.next_id) + " " +
+    std::string data = "POWER_TIMER 5\n" + std::to_string(snapshot.next_id) + " " +
         std::to_string(snapshot.next_occurrence_id) + " " + std::to_string(snapshot.records.size()) + " " +
         (snapshot.sound_enabled ? "1" : "0") + "\n" +
         std::to_string(snapshot.theme) + "\n" +
@@ -28,7 +28,8 @@ inline std::string encode_snapshot(const ScheduleSnapshot& snapshot) {
             std::to_string(record.minute_of_day) + " " + std::to_string(record.civil_high_water) + " " +
             std::to_string(record.last_occurrence_id) + " " +
             std::to_string(static_cast<unsigned>(record.last_state)) + " " +
-            std::to_string(record.conflict_with) + " " + (record.force_shutdown ? "1" : "0") + "\n";
+            std::to_string(record.conflict_with) + " " + (record.force_shutdown ? "1" : "0") + " " +
+            std::to_string(record.postponed_utc_ms) + "\n";
     }
     return data.size() <= max_schedule_file_bytes ? data : std::string{};
 }
@@ -38,11 +39,13 @@ inline std::optional<ScheduleSnapshot> decode_snapshot(std::string_view data) {
     constexpr std::string_view version_2 = "POWER_TIMER 2\n";
     constexpr std::string_view version_3 = "POWER_TIMER 3\n";
     constexpr std::string_view version_4 = "POWER_TIMER 4\n";
+    constexpr std::string_view version_5 = "POWER_TIMER 5\n";
     if (data.size() > max_schedule_file_bytes) return std::nullopt;
     const bool legacy = data.starts_with(version_1);
     const bool v2 = data.starts_with(version_2);
     const bool v3 = data.starts_with(version_3);
-    const bool v4 = data.starts_with(version_4);
+    const bool v5 = data.starts_with(version_5);
+    const bool v4 = data.starts_with(version_4) || v5; // v5 is v4 plus a per-record postponement
     if (!legacy && !v2 && !v3 && !v4) return std::nullopt;
     data.remove_prefix(legacy ? version_1.size() : v2 ? version_2.size() : v3 ? version_3.size() : version_4.size());
     auto number = [&data](char delimiter) -> std::optional<std::uint64_t> {
@@ -104,8 +107,13 @@ inline std::optional<ScheduleSnapshot> decode_snapshot(std::string_view data) {
             record.last_occurrence_id = *last_id;
             record.last_state = static_cast<OccurrenceState>(*last_state);
             if (v3 || v4) {
-                const auto conflict_with = number(' '), force_shutdown = number('\n');
+                const auto conflict_with = number(' '), force_shutdown = number(v5 ? ' ' : '\n');
                 if (!conflict_with || !force_shutdown || *force_shutdown > 1) return std::nullopt;
+                if (v5) {
+                    const auto postponed = number('\n');
+                    if (!postponed) return std::nullopt;
+                    record.postponed_utc_ms = *postponed;
+                }
                 record.conflict_with = *conflict_with;
                 record.force_shutdown = *force_shutdown == 1;
             }

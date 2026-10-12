@@ -5,7 +5,7 @@
 **Blocked by:** 05, 06.
 
 **Status:** ready-for-agent
-**Execution:** open
+**Execution:** resolved
 
 **Histórias da especificação:** 24, 25, 26.
 
@@ -20,3 +20,5 @@
 ## Comments
 
 - 08/10/2026: divisão, critérios e dependências aprovados pelo usuário. Tarefa publicada localmente; execução ainda não iniciada.
+
+- 11/10/2026: implementada em simulação. ScheduleBook::postpone (Duração/Avulso movem o prazo; Semanal usa postponed_utc_ms persistido, sem alterar o horário habitual da regra), arquivo POWER_TIMER 5 (lê v1–v4), botão e item de menu 'Adiar 10 min', avisos futuros recalculados sem repetir os já emitidos. Conflito no adiamento mantém o original e mostra o agendamento em colisão; a escolha de outro horário é feita por Editar. No limite do prazo o adiamento é recusado (um único intento). Pendente: validação visual no Windhawk e revisão matt-code-review.

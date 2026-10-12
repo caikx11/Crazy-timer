@@ -106,7 +106,7 @@ public:
             if (record.state != OccurrenceState::Scheduled || remaining_ms(record.id, now) != 0) continue;
             changed = true;
             const auto late = record.kind == ScheduleKind::Duration
-                ? now.monotonic_ms - deadlines_.at(record.id) : now.utc_ms - record.due_utc_ms;
+                ? now.monotonic_ms - deadlines_.at(record.id) : now.utc_ms - effective_due_utc_ms(record);
             const bool deliver = !record.paused && late <= 5000;
             record.state = deliver ? OccurrenceState::Uncertain : OccurrenceState::Expired;
             if (deliver) deliveries.push_back({record.id, record.occurrence_id, record.action});
@@ -243,13 +243,42 @@ public:
         return commit(candidate);
     }
 
+    // Moves only the current occurrence later; the repetition rule is untouched.
+    // On a collision nothing changes and conflicting_id() names the other row.
+    bool postpone(std::uint64_t id, std::uint64_t minutes, ClockSample now) {
+        if (!ready_) return false;
+        if (minutes == 0 || minutes > Scheduler::max_minutes || !valid_deadline(now, minutes))
+            return fail(BookError::InvalidInput);
+        auto candidate = snapshot_;
+        auto record = find(candidate, id);
+        if (record == candidate.records.end()) return fail(BookError::NotFound);
+        const auto remaining = remaining_ms(id, now);
+        const auto delta = minutes * 60000;
+        // At the deadline the intent belongs to tick(); never produce two intents.
+        if (record->state != OccurrenceState::Scheduled || remaining == 0 ||
+            remaining > maximum - now.utc_ms - delta) return fail(BookError::InvalidInput);
+        const auto due = now.utc_ms + remaining + delta;
+        if (record->kind != ScheduleKind::Duration && due >= calendar_end) return fail(BookError::InvalidInput);
+        for (const auto& other : candidate.records) {
+            if (other.id == id || other.paused || other.state != OccurrenceState::Scheduled) continue;
+            const auto other_due = other.kind == ScheduleKind::Duration
+                ? now.utc_ms + remaining_ms(other.id, now) : effective_due_utc_ms(other);
+            if (other_due == due) { conflicting_id_ = other.id; return fail(BookError::Conflict); }
+        }
+        if (record->kind == ScheduleKind::Weekly) record->postponed_utc_ms = due;
+        else record->due_utc_ms = due;
+        if (!accept_candidate(candidate, id, now) || !commit(candidate)) return false;
+        if (record->kind == ScheduleKind::Duration) deadlines_[id] = now.monotonic_ms + remaining + delta;
+        return true;
+    }
+
     const std::vector<ScheduleRecord>& list() const { return snapshot_.records; }
     std::uint64_t remaining_ms(std::uint64_t id, ClockSample now) const {
         const auto record = std::find_if(snapshot_.records.begin(), snapshot_.records.end(),
             [id](const auto& value) { return value.id == id; });
         if (record == snapshot_.records.end() || record->state != OccurrenceState::Scheduled) return 0;
         if (record->kind != ScheduleKind::Duration)
-            return record->due_utc_ms > now.utc_ms ? record->due_utc_ms - now.utc_ms : 0;
+            return effective_due_utc_ms(*record) > now.utc_ms ? effective_due_utc_ms(*record) - now.utc_ms : 0;
         const auto deadline = deadlines_.find(id);
         return deadline != deadlines_.end() && deadline->second > now.monotonic_ms
             ? deadline->second - now.monotonic_ms : 0;
@@ -311,6 +340,7 @@ private:
         record.last_state = result;
         record.civil_high_water = std::max(record.civil_high_water, civil_key(record.civil));
         record.state = result;
+        record.postponed_utc_ms = 0;
     }
     bool advance_weekly(ScheduleSnapshot& candidate, ScheduleRecord& record, ClockSample now) {
         BookError error;
@@ -324,8 +354,10 @@ private:
         if (!calendar_) return fail(BookError::Calendar);
         const auto values = calendar_->resolve(record.civil);
         if (!values) return fail(BookError::Calendar);
+        // A postponed occurrence stays due until its new instant even after the rule's time passed.
         if (record.state == OccurrenceState::Scheduled &&
-            (record.due_utc_ms <= now.utc_ms || values->empty() || values->front() <= now.utc_ms))
+            (effective_due_utc_ms(record) <= now.utc_ms || values->empty() ||
+             (!record.postponed_utc_ms && values->front() <= now.utc_ms)))
             consume_weekly(record, OccurrenceState::Expired);
         if (record.state != OccurrenceState::Scheduled) return advance_weekly(candidate, record, now);
         const auto previous_civil = record.civil;
@@ -334,6 +366,7 @@ private:
         if (!(previous_civil == record.civil)) {
             if (candidate.next_occurrence_id == maximum) return fail(BookError::InvalidInput);
             record.occurrence_id = candidate.next_occurrence_id++;
+            record.postponed_utc_ms = 0;
         }
         return true;
     }

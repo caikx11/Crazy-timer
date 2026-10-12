@@ -48,6 +48,43 @@ struct TestCalendar : Calendar {
         return std::vector<std::uint64_t>{static_cast<std::uint64_t>(value)};
     }
 };
+void postpone_moves_only_the_current_occurrence() {
+    {
+        MemoryStorage storage;
+        ScheduleBook book(storage);
+        check(book.initialize({0, 0}) && book.create(Action::Sleep, L"15", {0, 0}), "prepare duration postpone");
+        const auto occurrence = book.list()[0].occurrence_id;
+        check(book.postpone(1, 10, {0, 0}) && book.remaining_ms(1, {0, 0}) == 1500000 &&
+              book.list()[0].due_utc_ms == 1500000 && book.list()[0].occurrence_id == occurrence,
+              "postpone keeps occurrence identity and extends deadline");
+        ScheduleBook reopened(storage);
+        check(reopened.initialize({0, 0}) && reopened.remaining_ms(1, {0, 0}) == 1500000, "postponement survives restart");
+        check(!book.postpone(1, 0, {0, 0}) && book.error() == BookError::InvalidInput, "zero minutes rejected");
+        check(!book.postpone(9, 10, {0, 0}) && book.error() == BookError::NotFound, "unknown schedule rejected");
+        check(book.create(Action::Hibernate, L"40", {0, 0}), "prepare postpone collision");
+        check(!book.postpone(1, 15, {0, 0}) && book.error() == BookError::Conflict && book.conflicting_id() == 2 &&
+              book.remaining_ms(1, {0, 0}) == 1500000, "colliding postpone keeps original deadline");
+        check(!book.postpone(1, 10, {1500000, 1500000}) && book.error() == BookError::InvalidInput,
+              "no postpone at the deadline: tick owns the single intent");
+        check(book.tick({1500000, 1500000}).size() == 1, "deadline still delivers exactly once");
+    }
+    {
+        MemoryStorage storage;
+        TestCalendar calendar;
+        ScheduleBook book(storage, calendar);
+        check(book.initialize({0, 0}) && book.create_weekly(Action::Sleep, 127, 1, {0, 0}), "prepare weekly postpone");
+        const auto occurrence = book.list()[0].occurrence_id;
+        check(book.postpone(1, 10, {0, 0}) && book.list()[0].due_utc_ms == 60000 &&
+              book.list()[0].minute_of_day == 1 && book.list()[0].occurrence_id == occurrence &&
+              book.remaining_ms(1, {0, 0}) == 660000, "weekly postpone keeps usual rule time");
+        ScheduleBook reopened(storage, calendar);
+        check(reopened.initialize({0, 0}) && reopened.remaining_ms(1, {0, 0}) == 660000, "weekly postponement survives restart");
+        check(book.tick({60000, 60000}).empty(), "no delivery at the usual time");
+        const auto delivered = book.tick({660000, 660000});
+        check(delivered.size() == 1 && book.list()[0].postponed_utc_ms == 0 &&
+              book.list()[0].due_utc_ms == 86460000, "delivers once at new time; next day keeps usual time");
+    }
+}
 void once_uses_fixed_instant() {
     MemoryStorage storage;
     TestCalendar calendar;
@@ -763,6 +800,7 @@ int main() {
     recurring_failures_are_transactional();
     calendar_failures_block_effects();
     weekly_keeps_rule_after_delivery_and_cancel();
+    postpone_moves_only_the_current_occurrence();
     once_uses_fixed_instant();
     dispatch_tolerance();
     create_and_restore();

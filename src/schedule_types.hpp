@@ -23,7 +23,14 @@ struct ScheduleRecord {
     OccurrenceState last_state = OccurrenceState::Scheduled;
     std::uint64_t conflict_with = 0;
     bool force_shutdown = false;
+    // Weekly only: one-off postponement of the current occurrence; the rule's
+    // usual time (civil/minute_of_day) is never changed. 0 means none.
+    std::uint64_t postponed_utc_ms = 0;
 };
+// The instant at which the current occurrence is actually due.
+inline std::uint64_t effective_due_utc_ms(const ScheduleRecord& record) {
+    return record.postponed_utc_ms > record.due_utc_ms ? record.postponed_utc_ms : record.due_utc_ms;
+}
 struct ScheduleSnapshot {
     std::uint64_t next_id = 1, next_occurrence_id = 1;
     std::vector<ScheduleRecord> records;

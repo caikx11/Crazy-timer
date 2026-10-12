@@ -25,11 +25,11 @@ int main(int argc, char** argv) {
     CHECK(actual.snapshot.records.size() == 1);
     CHECK(actual.snapshot.records.front().due_utc_ms == 901000);
     CHECK(actual.snapshot.records.front().action == Action::Sleep);
-    CHECK(encode_snapshot(expected) == "POWER_TIMER 4\n2 2 1 0\n0\n0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n");
+    CHECK(encode_snapshot(expected) == "POWER_TIMER 5\n2 2 1 0\n0\n0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n");
     {
         std::ifstream in(file, std::ios::binary);
         const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        CHECK(saved.starts_with("POWER_TIMER 4\n"));
+        CHECK(saved.starts_with("POWER_TIMER 5\n"));
     }
     // A version-1 duration loads with the new fields at their neutral values.
     const std::string legacy = "POWER_TIMER 1\n2 2 1\n1 1 1 15 901000 0 0\n";
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     CHECK(migrated->records.front().conflict_with == 0);
     CHECK(!migrated->records.front().force_shutdown);
     const auto migrated_data = encode_snapshot(*migrated);
-    CHECK(migrated_data.starts_with("POWER_TIMER 4\n"));
+    CHECK(migrated_data.starts_with("POWER_TIMER 5\n"));
     const auto migrated_again = decode_snapshot(migrated_data);
     CHECK(migrated_again.has_value());
     CHECK(migrated_again->records.front().minutes == 15);
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
     {
         std::ifstream in(legacy_file, std::ios::binary);
         const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        CHECK(saved.starts_with("POWER_TIMER 4\n"));
+        CHECK(saved.starts_with("POWER_TIMER 5\n"));
     }
     CHECK(legacy_storage.load().status == LoadStatus::Loaded);
     CHECK(legacy_storage.load().snapshot.records.front().paused);
@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
         {
             std::ifstream in(migration_file, std::ios::binary);
             const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-            CHECK(saved.starts_with("POWER_TIMER 4\n"));
+            CHECK(saved.starts_with("POWER_TIMER 5\n"));
         }
     }
     auto forced = expected;
@@ -226,6 +226,11 @@ int main(int argc, char** argv) {
     CHECK(!decode_snapshot(
         "POWER_TIMER 3\n2 2 1\n1 1 3 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n"));
     CHECK(decode_snapshot("POWER_TIMER 3\n2 2 0\n"));
+    // Version 4 files (no postponement field) remain readable.
+    CHECK(decode_snapshot("POWER_TIMER 4\n2 2 1 0\n0\n0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n"));
+    CHECK(decode_snapshot("POWER_TIMER 5\n2 2 1 0\n0\n0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n"));
+    // A postponement is only valid on a weekly rule.
+    CHECK(!decode_snapshot("POWER_TIMER 5\n2 2 1 0\n0\n0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 900000\n"));
     CHECK(!decode_snapshot("POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0\n"));
     CHECK(!decode_snapshot(canonical_v2 + "tail"));
     const std::string v2_record_prefix = "POWER_TIMER 2\n2 2 1\n1 1 1 15 901000 0 0 ";

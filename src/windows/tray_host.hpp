@@ -47,7 +47,7 @@ inline void (*log_message)(const wchar_t*) = nullptr;
 
 enum ControlId { action_id = 100, duration_id, schedule_id, cancel_id,
                  preset_id = 110, open_id = 120, settings_id, visibility_id, exit_id, menu_id,
-                 list_id = 130, edit_id, pause_id, erase_id, new_id,
+                 list_id = 130, edit_id, pause_id, erase_id, new_id, postpone_id,
                  kind_id = 140, date_id, time_id, daily_id, weekday_id = 150, theme_id = 160, locale_id = 170 };
 
 inline ClockSample clock_sample() {
@@ -124,7 +124,7 @@ class Panel {
     HFONT fonts_[4]{};
     HBRUSH background_{};
     HICON icon_{};
-    HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{}, theme_combo_{}, locale_combo_{};
+    HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{}, postpone_{}, theme_combo_{}, locale_combo_{};
     FileScheduleStorage storage_;
     WindowsCalendar calendar_;
     ScheduleBook book_;
@@ -184,7 +184,7 @@ class Panel {
         SetWindowTextW(GetDlgItem(window_, 15), editing_id_ ? get_text(locale_, text::save_schedule, text_en::save_schedule) : get_text(locale_, text::add_schedule, text_en::add_schedule)); // Add schedule
         SetWindowTextW(GetDlgItem(window_, 16), get_text(locale_, text::new_schedule, text_en::new_schedule)); // New schedule
         SetWindowTextW(GetDlgItem(window_, 17), get_text(locale_, text::schedules, text_en::schedules)); // Schedules label
-        SetWindowTextW(GetDlgItem(window_, 18), get_text(locale_, text::edit, text_en::edit)); // Edit button
+        if (edit_) set_text(edit_, get_text(locale_, text::edit, text_en::edit));
 
         // Update pause button based on state
         if (selected_record() && selected_record()->paused) {
@@ -193,8 +193,9 @@ class Panel {
             SetWindowTextW(GetDlgItem(window_, 19), get_text(locale_, text::pause, text_en::pause));
         }
 
-        SetWindowTextW(GetDlgItem(window_, 20), get_text(locale_, text::erase, text_en::erase)); // Erase button
-        SetWindowTextW(GetDlgItem(window_, 21), get_text(locale_, text::cancel, text_en::cancel)); // Cancel button
+        if (erase_) set_text(erase_, get_text(locale_, text::erase, text_en::erase));
+        if (cancel_) set_text(cancel_, get_text(locale_, text::cancel, text_en::cancel));
+        if (postpone_) set_text(postpone_, get_text(locale_, text::postpone, text_en::postpone));
 
         // Update status and other dynamic text (will be updated by refresh())
         if (selected_record()) {
@@ -454,10 +455,11 @@ class Panel {
             column.pszText = const_cast<wchar_t*>(labels[i]); column.cx = px(widths[i]);
             ListView_InsertColumn(list_, i, &column);
         }
-        edit_ = add(L"BUTTON", get_text(locale_, text::edit, text_en::edit), WS_TABSTOP | BS_OWNERDRAW, edit_id, 24, 608, 124, 36, 2);
-        pause_ = add(L"BUTTON", get_text(locale_, text::pause, text_en::pause), WS_TABSTOP | BS_OWNERDRAW, pause_id, 160, 608, 124, 36, 2);
-        erase_ = add(L"BUTTON", get_text(locale_, text::erase, text_en::erase), WS_TABSTOP | BS_OWNERDRAW, erase_id, 296, 608, 124, 36, 2);
-        cancel_ = add(L"BUTTON", get_text(locale_, text::cancel, text_en::cancel), WS_TABSTOP | BS_OWNERDRAW, cancel_id, 432, 608, 124, 36, 2);
+        edit_ = add(L"BUTTON", get_text(locale_, text::edit, text_en::edit), WS_TABSTOP | BS_OWNERDRAW, edit_id, 24, 608, 76, 36, 2);
+        pause_ = add(L"BUTTON", get_text(locale_, text::pause, text_en::pause), WS_TABSTOP | BS_OWNERDRAW, pause_id, 108, 608, 84, 36, 2);
+        erase_ = add(L"BUTTON", get_text(locale_, text::erase, text_en::erase), WS_TABSTOP | BS_OWNERDRAW, erase_id, 200, 608, 76, 36, 2);
+        cancel_ = add(L"BUTTON", get_text(locale_, text::cancel, text_en::cancel), WS_TABSTOP | BS_OWNERDRAW, cancel_id, 284, 608, 140, 36, 2);
+        postpone_ = add(L"BUTTON", get_text(locale_, text::postpone, text_en::postpone), WS_TABSTOP | BS_OWNERDRAW, postpone_id, 432, 608, 124, 36, 2);
         status_ = add(L"STATIC", get_text(locale_, text::idle, text_en::idle), SS_CENTER, 0, 24, 660, 532, 24);
         countdown_ = add(L"STATIC", get_text(locale_, text::clock_empty, text_en::clock_empty), SS_CENTER, 0, 24, 688, 532, 56, 3);
         detail_ = add(L"STATIC", get_text(locale_, text::idle_detail, text_en::idle_detail), SS_CENTER, 0, 24, 748, 532, 40, 2);
@@ -554,7 +556,7 @@ class Panel {
             std::wstring message = std::wstring(get_text(locale_, text::conflict_error, text_en::conflict_error)) + text::schedule_number + std::to_wstring(book_.conflicting_id());
             for (const auto& record : book_.list()) if (record.id == book_.conflicting_id()) {
                 message += std::wstring(get_text(locale_, text::separator, text_en::separator)) + get_text(locale_, text::actions[static_cast<int>(record.action)], text_en::actions[static_cast<int>(record.action)]) +
-                    std::wstring(get_text(locale_, text::separator, text_en::separator)) + local_time_at(record.due_utc_ms, locale_);
+                    std::wstring(get_text(locale_, text::separator, text_en::separator)) + local_time_at(effective_due_utc_ms(record), locale_);
                 break;
             }
             set_text(error_, message);
@@ -594,7 +596,7 @@ class Panel {
             auto number = std::to_wstring(record.id);
             item.pszText = number.data();
             ListView_InsertItem(list_, &item);
-            auto due = record.state == OccurrenceState::Scheduled ? local_time_at(record.due_utc_ms, locale_) : std::wstring(get_text(locale_, text::no_next, text_en::no_next));
+            auto due = record.state == OccurrenceState::Scheduled ? local_time_at(effective_due_utc_ms(record), locale_) : std::wstring(get_text(locale_, text::no_next, text_en::no_next));
             auto rule = record.kind == ScheduleKind::Duration ? std::to_wstring(record.minutes) + L" min" :
                 std::wstring(record.kind == ScheduleKind::Once ? text::once_rule : text::weekly_rule);
             ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(get_text(locale_, text::actions[static_cast<int>(record.action)], text_en::actions[static_cast<int>(record.action)])));
@@ -707,6 +709,7 @@ class Panel {
         EnableWindow(erase_, writable && record);
         EnableWindow(pause_, writable && scheduled);
         EnableWindow(cancel_, writable && scheduled);
+        EnableWindow(postpone_, writable && scheduled);
         set_text(pause_, record && record->paused ? get_text(locale_, text::resume, text_en::resume) : get_text(locale_, text::pause, text_en::pause));
         set_text(start_, editing_id_ ? get_text(locale_, text::save_schedule, text_en::save_schedule) : get_text(locale_, text::add_schedule, text_en::add_schedule));
         if (record) {
@@ -720,7 +723,7 @@ class Panel {
             const wchar_t* note = record->state == OccurrenceState::Uncertain ? get_text(locale_, text::uncertain_detail, text_en::uncertain_detail) :
                 record->paused && scheduled ? get_text(locale_, text::paused_detail, text_en::paused_detail) : nullptr;
             std::wstring detail = note ? std::wstring(note) : std::wstring(get_text(locale_, text::actions[static_cast<int>(record->action)], text_en::actions[static_cast<int>(record->action)])) +
-                get_text(locale_, text::separator, text_en::separator) + local_time_at(record->due_utc_ms, locale_);
+                get_text(locale_, text::separator, text_en::separator) + local_time_at(effective_due_utc_ms(*record), locale_);
             if (record->conflict_with) detail = std::wstring(get_text(locale_, text::conflict_detail, text_en::conflict_detail)) +
                 std::to_wstring(record->conflict_with) + get_text(locale_, text::conflict_hint, text_en::conflict_hint);
             else if (record->kind == ScheduleKind::Weekly) {
@@ -782,10 +785,21 @@ class Panel {
                 const auto focus = record->kind == ScheduleKind::Duration ? duration_ : time_;
                 show_kind(); refresh(); SetFocus(focus);
             }
-        } else if (id == pause_id || id == erase_id || id == cancel_id) {
+        } else if (id == pause_id || id == erase_id || id == cancel_id || id == postpone_id) {
             if (const auto* record = selected_record()) {
                 const auto selected = record->id;
-                if (id == pause_id) book_.set_paused(selected, !record->paused, clock_sample());
+                const auto occurrence = record->occurrence_id;
+                if (id == postpone_id) {
+                    const auto now = clock_sample();
+                    if (book_.postpone(selected, 10, now)) {
+                        // Only warnings still ahead of the new deadline may fire again; the
+                        // occurrence keeps its identity, so crossed-and-passed ones stay marked.
+                        const auto remaining = book_.remaining_ms(selected, now);
+                        const std::uint64_t limits[] = {30ULL * 60000, 15ULL * 60000, 10ULL * 60000, 5ULL * 60000, Scheduler::warning_ms};
+                        for (std::size_t i = 0; i < std::size(limits); ++i)
+                            if (remaining > limits[i]) warned_thresholds_.erase(occurrence * 10 + i);
+                    }
+                } else if (id == pause_id) book_.set_paused(selected, !record->paused, clock_sample());
                 else if (id == erase_id) {
                     if (book_.erase(selected) && editing_id_ == selected) editing_id_ = 0;
                 } else book_.cancel(selected);
@@ -816,6 +830,7 @@ class Panel {
         AppendMenuW(menu, MF_STRING, settings_id, get_text(locale_, text::settings, text_en::settings));
         AppendMenuW(menu, MF_STRING, visibility_id, get_text(locale_, text::notification_settings, text_en::notification_settings));
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING | (book_.writable() && selected_record() && selected_record()->state == OccurrenceState::Scheduled ? MF_ENABLED : MF_GRAYED), postpone_id, get_text(locale_, text::postpone, text_en::postpone));
         AppendMenuW(menu, MF_STRING | (book_.writable() && selected_record() && selected_record()->state == OccurrenceState::Scheduled ? MF_ENABLED : MF_GRAYED), cancel_id, get_text(locale_, text::cancel, text_en::cancel));
         AppendMenuW(menu, MF_STRING, exit_id, get_text(locale_, text::exit, text_en::exit));
         POINT point{};

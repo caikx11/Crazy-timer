@@ -78,6 +78,7 @@ inline constexpr auto edit = L"Edit";
 inline constexpr auto pause = L"Pause";
 inline constexpr auto resume = L"Resume";
 inline constexpr auto erase = L"Delete";
+inline constexpr auto postpone = L"Postpone 10 min";
 inline constexpr auto action_column = L"Action";
 inline constexpr auto id_column = L"No.";
 inline constexpr auto state_conflict = L"Conflict";

@@ -27,6 +27,8 @@ inline bool valid_snapshot(const ScheduleSnapshot& snapshot) {
             !valid_occurrence_state(record.state) || !valid_occurrence_state(record.last_state) ||
             (record.force_shutdown && record.action != Action::Shutdown) ||
             record.conflict_with >= snapshot.next_id || record.conflict_with == record.id) return false;
+        if (record.postponed_utc_ms &&
+            (record.kind != ScheduleKind::Weekly || record.postponed_utc_ms >= 253402300800000ULL)) return false;
         if (record.kind == ScheduleKind::Duration) {
             if (record.minutes < Scheduler::min_minutes || record.minutes > Scheduler::max_minutes ||
                 !(record.civil == CivilTime{})) return false;
