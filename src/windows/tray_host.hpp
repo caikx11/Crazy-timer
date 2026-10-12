@@ -709,6 +709,10 @@ class Panel {
             const auto action = selected_action();
             const auto civil = selected_civil();
             bool ok = false;
+            if (backend_.query().of(action) != Availability::Available) {
+                set_text(error_, get_text(locale_, text::power_unavailable, text_en::power_unavailable));
+                return;
+            }
             switch (selected_kind()) {
                 case ScheduleKind::Duration: ok = editing ? book_.edit(editing_id_, action, duration_text(), now) :
                     book_.create(action, duration_text(), now); break;
