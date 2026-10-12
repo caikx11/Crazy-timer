@@ -796,7 +796,15 @@ class Panel {
             preview();
         } else if (id == open_id || id == settings_id) {
             show(true);
-            if (id == settings_id) set_text(error_, get_text(locale_, text::settings_note, text_en::settings_note));
+            if (id == settings_id && theme_combo_) {
+                // Settings are theme and language: jump to them and open the theme list.
+                set_text(error_, L"");
+                SetFocus(theme_combo_);
+                SendMessageW(theme_combo_, CB_SHOWDROPDOWN, TRUE, 0);
+            } else if (id == open_id) {
+                SetWindowPos(window_, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+                FlashWindow(window_, FALSE);
+            }
         } else if (id == visibility_id) {
             const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(window_, L"open",
                 L"ms-settings:taskbar", nullptr, nullptr, SW_SHOWNORMAL));
