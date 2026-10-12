@@ -5,7 +5,7 @@
 **Blocked by:** 07.
 
 **Status:** ready-for-agent
-**Execution:** open
+**Execution:** done (simulado; validado no Windows 2026-10-12)
 
 **Histórias da especificação:** 5, 6, 28, 30, 31.
 
