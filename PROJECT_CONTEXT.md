@@ -29,6 +29,8 @@ sources/ e AGENTS.md sincronizado superior. Launcher oficial. Proteções/ACL/an
 4. Futura tarefa08: verificar consumidor real com efeito substituível e falha no lote; não repetir o laço no teste. Limites de calendário e recuperação estão documentados nos ADRs.
 
 # Onde parei
+READMEs: README.md (inglês, página do GitHub) e README.pt-BR.md (português). Release: scripts/package-release.ps1 + docs/releases/ (publicação manual pelo usuário; falta merge na main e tag v0.6.0).
+
 2026-10-12 (tarde): a pedido do usuário, o modo simulação foi REMOVIDO do mod: o funcionamento real é o padrão e não há setting realActions. Textos base agora descrevem ação real; só preview.cpp usa simulation_mode (start(..., simulate=true)) com SimulatedBackend e tabela simulation_texts. Mutex/classe de janela mantêm 'Simulation' no nome (compat). NÃO compilado no Windows: rodar build-mod.ps1 e build-preview.ps1. Preview nunca deve agir de verdade.
 
 2026-10-12 (fim): usuário testou o modo real no Windows 11 (Windhawk, mod crazy-time v0.6.0, opção 'Executar ações reais' ligada) e relatou que tudo funcionou. Sem evidências por ação. A causa do 'só simula' inicial era o mod antigo ainda ativo (mutex de instância única mantido). Falta: code-review do WindowsPowerBackend, screenshots, declaração de IA, decisão sobre publicar.

@@ -1,51 +1,56 @@
 # Crazy Time
 
-🇧🇷 Português · [🇬🇧 English](README.en.md)
+[🇧🇷 Português](README.pt-BR.md) · 🇬🇧 English
 
-Agendador minimalista de desligamento, suspensão e hibernação para o Windows, na forma de um mod do Windhawk. Em desenvolvimento.
+A minimalist shutdown, sleep and hibernate scheduler for Windows, built as a [Windhawk](https://windhawk.net) mod. Work in progress.
 
-## O que faz
+## What it does
 
-Crazy Time programa desligar, suspender ou hibernar o Windows. Cada agendamento pode ser por duração (1 minuto a 7 dias), por data e hora, ou repetido nos dias da semana. Há vários agendamentos ao mesmo tempo, com editar, pausar, cancelar uma ocorrência, adiar 10 minutos e excluir. A lista é recuperada ao reabrir.
+Crazy Time schedules shutdown, sleep or hibernate on Windows. Each schedule can be **by duration** (1 minute to 7 days), at a **date and time**, or **repeating on chosen weekdays**. You can keep several schedules at once, edit, pause, cancel a single occurrence, postpone it by 10 minutes, or delete it. The list is restored when the app reopens.
 
-- Avisos de contagem (30, 15, 10, 5 e 1 minuto) com som opcional.
-- Conflitos de horário são detectados e recusados.
-- Opção de forçar o fechamento de aplicativos, **por agendamento**, desmarcada por padrão e com aviso de perda de dados.
-- Ações indisponíveis neste computador são explicadas e não são agendadas.
-- Português e inglês; tema automático, claro ou escuro; alto contraste.
+- Countdown warnings at 30, 15, 10, 5 and 1 minute, with optional sound.
+- Schedules at the same instant are detected and refused.
+- Optional "force apps to close" **per schedule** (shutdown only), off by default, with a data-loss warning.
+- Actions this computer cannot perform are explained instead of being scheduled.
+- Portuguese and English UI; automatic, light or dark theme; high contrast.
 
-**O mod realmente desliga, suspende ou hiberna o computador** quando um agendamento dispara (`WindowsPowerBackend`). Salve seu trabalho antes e teste primeiro com uma suspensão curta. O caminho real foi testado manualmente no Windows 11 pelo autor (relato de 12/10/2026, sem registro detalhado por ação). Só a prévia local (`scripts/build-preview.ps1`) roda em simulação, com um `SimulatedBackend`, e nunca age sobre o computador.
+> **The mod really shuts down, sleeps or hibernates your computer** when a schedule fires (`WindowsPowerBackend`). Save your work first, and try a short sleep before relying on it. The real path was manually tested on Windows 11 by the author (report of 2026-10-12, no detailed per-action record). Only the local preview (`scripts/build-preview.ps1`) runs in simulation, using a `SimulatedBackend`, and never touches the computer.
 
-![Formulário semanal e lista recuperada (captura antiga, quando o projeto ainda se chamava Power Timer)](docs/screenshots/task04-calendar.png)
+![Weekly form and restored list (old capture, from when the project was still called Power Timer)](docs/screenshots/task04-calendar.png)
 
-## Estado
+## Status
 
-Testado no Windows 11 com Windhawk 1.7.x. **Windows 10 não foi verificado.** O Windhawk instalado precisa ser atualizado manualmente colando a fonte gerada no editor (veja a instalação local). Publicação no catálogo do Windhawk ainda não foi feita; veja o [checklist de publicação](docs/release-checklist.md). A documentação técnica em `docs/` está em português.
+Tested on Windows 11 with Windhawk 1.7.x. **Windows 10 has not been verified.** It is expected to work, but please report problems. It has not been submitted to the Windhawk catalog yet; see the [release checklist](docs/release-checklist.md). Technical documentation in `docs/` is in Portuguese.
 
-- [Validação e limitações atuais](docs/validation/task-04.md)
-- [Roteiro de validação Windows 11](docs/validation/task-12-roteiro-win11.md)
-- [Desligamento forçado e limites do Windows](docs/adr/009-desligamento-forcado.md)
-- [Políticas de calendário e recuperação](docs/adr/004-calendario-recorrencias.md)
-- [Integração anterior com Windhawk](docs/validation/task-02.md)
-- [Preparação e instalação local](docs/installation-local.md)
-- [Especificação vigente](.scratch/power-timer-v1/spec.md)
-- [Mapa das 13 tarefas aprovadas](.scratch/power-timer-v1/map.md)
+## Install (local build)
 
-No PowerShell 7, na raiz do projeto:
+**Easy install:** once a release exists, download `crazy-time.wh.cpp` from the [Releases](https://github.com/caikx11/power-timer/releases) page and paste it into the Windhawk editor (steps are in the release notes).
+
+To build it yourself, you need Windhawk with its compiler installed (`C:\Program Files\Windhawk`) and PowerShell.
 
 ```powershell
-./scripts/test.ps1
-./scripts/test-executor.ps1
-./scripts/build-preview.ps1
-./scripts/build-mod.ps1
+./scripts/test.ps1            # scheduler, schedule book, storage, calendar, warnings
+./scripts/test-executor.ps1   # power executor with a fake backend
+./scripts/build-preview.ps1   # optional: simulated UI preview in build/preview/
+./scripts/build-mod.ps1       # generates build/mod/crazy-time.wh.cpp
 ```
 
-**Instalação fácil:** quando houver um release, baixe `crazy-time.wh.cpp` na página de [Releases](../../releases) e cole no editor do Windhawk (passo a passo no texto do release). Para publicar um release, veja [docs/releases/README.md](docs/releases/README.md).
+1. In Windhawk, create a new mod and replace the whole template with the contents of `build/mod/crazy-time.wh.cpp`.
+2. Compile it (Ctrl+B) and enable the mod. A tray icon appears.
+3. Click the icon to open the panel, pick an action and how it is scheduled, then press **Schedule action**.
 
-Os scripts usam o compilador instalado com Windhawk. A interface executável fica em `build/preview/`; fonte única para o editor e DLL de conferência ficam em `build/mod/`. Consulte a instalação local antes de ativar o mod.
+Details: [local installation](docs/installation-local.md) (Portuguese).
 
-O CI (`.github/workflows/ci.yml`) roda apenas as suítes portáteis em Linux; armazenamento, calendário e build do mod exigem Windows e o compilador do Windhawk.
+## How it works
 
-Licença: [MIT](LICENSE).
+A portable core (`src/`: scheduler, calendar rules, schedule book, storage codec, warning tracker, power executor interface) is separated from the Win32 host (`src/windows/`: tray icon, UI, file storage, local calendar, real power backend). The portable tests run anywhere; CI (`.github/workflows/ci.yml`) runs them on Linux. Storage, calendar and the mod build need Windows and the Windhawk compiler.
 
-Coautoria: o código foi desenvolvido com assistência de IA (declaração final a confirmar no checklist).
+Normal shutdown never forces applications; forcing is an explicit, per-schedule opt-in. Sleep and hibernate never force and keep wake events. A failed or rejected request is never retried automatically and does not cancel the next weekly repetition. See [ADR 009](docs/adr/009-desligamento-forcado.md) for the Windows limits (Portuguese).
+
+## License
+
+[MIT](LICENSE).
+
+## AI assistance
+
+This project was developed with the assistance of AI (Claude by Anthropic). The author reviewed and tested the result. Final wording to be confirmed in the release checklist.
