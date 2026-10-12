@@ -379,7 +379,7 @@ class Panel {
 
         if (background_) DeleteObject(background_);
         background_ = CreateSolidBrush(bg_);
-        if (window_) RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+        if (window_) RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
         if (list_) {
             ListView_SetTextColor(list_, ink_);
             ListView_SetTextBkColor(list_, bg_);
