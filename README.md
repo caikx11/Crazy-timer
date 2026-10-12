@@ -42,4 +42,6 @@ Os scripts usam o compilador instalado com Windhawk. A interface executável fic
 
 O CI (`.github/workflows/ci.yml`) roda apenas as suítes portáteis em Linux; armazenamento, calendário e build do mod exigem Windows e o compilador do Windhawk.
 
+Licença: [MIT](LICENSE).
+
 Coautoria: o código foi desenvolvido com assistência de IA (declaração final a confirmar no checklist).

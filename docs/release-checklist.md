@@ -4,7 +4,7 @@ Nada aqui foi decidido ou publicado. Itens abertos permanecem abertos até o usu
 
 ## Decisões que dependem do usuário
 - [x] **Nome definitivo**: crazy-time (Crazy Time), decidido em 12/10/2026. Conferir se já existe mod/projeto com o mesmo nome no catálogo e no GitHub antes de publicar.
-- [ ] **Licença** do repositório e do mod (nenhum arquivo LICENSE existe; não escolher sem confirmação).
+- [x] **Licença**: MIT, decidida em 12/10/2026 (arquivo `LICENSE`, titular "caikx11"; trocar pelo nome completo se preferir) e `@license MIT` no cabeçalho do mod.
 - [ ] **Autoria e perfil** a constar no cabeçalho do mod e no catálogo.
 - [ ] **Declaração de assistência por IA**: o código foi escrito com apoio de assistentes de IA; texto final a aprovar.
 - [ ] Visibilidade do repositório (hoje privado).

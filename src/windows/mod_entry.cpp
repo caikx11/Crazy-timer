@@ -6,6 +6,7 @@
 // @description:pt-BR Agende ações simuladas pelo ícone da barra. Nenhuma ação real de energia é executada.
 // @version         0.5.0
 // @author          caikx11
+// @license         MIT
 // @include         windhawk.exe
 // @architecture    x86
 // @compilerOptions -lshell32 -lcomctl32 -lgdi32 -ladvapi32
