@@ -5,7 +5,7 @@
 **Blocked by:** 08.
 
 **Status:** ready-for-agent
-**Execution:** open
+**Execution:** done (simulado; ADR 009)
 
 **Histórias da especificação:** 29.
 
