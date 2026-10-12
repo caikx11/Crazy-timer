@@ -1,4 +1,5 @@
 #include "../src/schedule_book.hpp"
+#include "../src/power_executor.hpp"
 #include <cstdlib>
 #include <iostream>
 #include <chrono>
@@ -784,7 +785,45 @@ void monotonic_projection_has_no_stale_or_epoch_false_conflicts() {
               "distinct elapsed deadlines before UTC epoch cannot become a fabricated collision at zero");
     }
 }
+struct RejectingBackend : PowerBackend {
+    int requests = 0;
+    PowerCapabilities query() override { return {}; }
+    ExecResult request(Action, bool) override { ++requests; return {ExecStatus::Rejected, Availability::Available, 5}; }
+};
+void force_shutdown_is_explicit_per_schedule() {
+    MemoryStorage storage;
+    ScheduleBook book(storage);
+    check(book.initialize({0, 0}) && book.create(Action::Shutdown, L"1", {0, 0}) &&
+          book.create(Action::Shutdown, L"2", {0, 0}) && book.create(Action::Sleep, L"3", {0, 0}) &&
+          !book.list()[0].force_shutdown, "new schedules are not forced");
+    check(book.set_force_shutdown(1, true) && book.list()[0].force_shutdown && !book.list()[1].force_shutdown,
+          "force applies to one schedule only");
+    check(!book.set_force_shutdown(3, true) && !book.list()[2].force_shutdown, "sleep cannot be forced");
+    ScheduleBook reopened(storage);
+    check(reopened.initialize({0, 0}) && reopened.list()[0].force_shutdown && !reopened.list()[1].force_shutdown,
+          "force choice persists individually");
+    const auto first = reopened.tick({60000, 60000});
+    const auto second = reopened.tick({120000, 120000});
+    check(first.size() == 1 && first[0].force && second.size() == 1 && !second[0].force,
+          "delivery carries each schedule's force setting");
+}
+void failed_power_request_is_not_repeated_after_restart() {
+    MemoryStorage storage;
+    ScheduleBook book(storage);
+    check(book.initialize({0, 0}) && book.create(Action::Hibernate, L"1", {0, 0}), "prepare failing request");
+    const auto deliveries = book.tick({60000, 60000});
+    check(deliveries.size() == 1 && book.list()[0].state == OccurrenceState::Uncertain, "intent is durable before the request");
+    RejectingBackend backend;
+    check(execute_power_action(backend, deliveries[0].action).status == ExecStatus::Rejected, "backend failure reported");
+    // Host crashes here: complete() is never called.
+    ScheduleBook restarted(storage);
+    check(restarted.initialize({61000, 1000}) && restarted.list()[0].state != OccurrenceState::Scheduled &&
+          restarted.list()[0].state != OccurrenceState::Completed && restarted.tick({62000, 2000}).empty() &&
+          backend.requests == 1, "failed request never repeats after restart and is not shown as completed");
+}
 int main() {
+    force_shutdown_is_explicit_per_schedule();
+    failed_power_request_is_not_repeated_after_restart();
     monotonic_projection_has_no_stale_or_epoch_false_conflicts();
     forced_shutdown_is_orthogonal_to_conflicts_and_preserved_on_edit();
     collision_at_timezone_changed_deadline_never_selects_winner();

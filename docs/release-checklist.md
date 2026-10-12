@@ -1,0 +1,28 @@
+# Checklist de publicação (pendências explícitas)
+
+Nada aqui foi decidido ou publicado. Itens abertos permanecem abertos até o usuário confirmar.
+
+## Decisões que dependem do usuário
+- [x] **Nome definitivo**: crazy-time (Crazy Time), decidido em 12/10/2026. Conferir se já existe mod/projeto com o mesmo nome no catálogo e no GitHub antes de publicar.
+- [x] **Licença**: MIT, decidida em 12/10/2026 (arquivo `LICENSE`, titular "caikx11"; trocar pelo nome completo se preferir) e `@license MIT` no cabeçalho do mod.
+- [ ] **Autoria e perfil** a constar no cabeçalho do mod e no catálogo.
+- [ ] **Declaração de assistência por IA**: o código foi escrito com apoio de assistentes de IA; texto final a aprovar.
+- [ ] Visibilidade do repositório: o usuário pediu para torná-lo público (12/10/2026). Só o usuário pode mudar em Settings → Danger Zone → Change visibility; README principal em inglês (`README.md`) e versão em português (`README.pt-BR.md`) e nomes de máquina/usuário do Windows removidos dos documentos de diagnóstico (continuam no histórico do git).
+
+## Qualidade antes de publicar
+- [ ] Roteiro Windows 11 completo (`docs/validation/task-12-roteiro-win11.md`).
+- [ ] Windows 10: **não verificado** (sem máquina). Declarar assim ou testar em VM.
+- [ ] Revisão de código das tarefas 05–09.
+- [ ] Screenshots reais atualizados no README (tema claro/escuro, pt/en).
+- [ ] Remover o aviso `lpReserved`? Vem do launcher oficial; não alterar.
+- [ ] CI remoto verde (`.github/workflows/ci.yml`, só suítes portáteis).
+
+## Antes de qualquer ação real de energia
+- [x] Executor real implementado (`WindowsPowerBackend`, desligado por padrão); ensaio manual no Windows 11 feito e relatado pelo usuário como funcionando (12/10/2026; sem prints/logs por ação). **Falta** revisão de código do executor real e registrar o resultado detalhado.
+- [ ] Ensaio manual deliberado, resultados separados dos testes simulados (ADR 008/009).
+
+## Catálogo Windhawk
+- [x] Formato conferido em 12/10/2026 (wiki "Creating a new mod" e README de windhawk-mods): cabeçalho com `@id` (minúsculas, dígitos, hífen), `@name`, `@description`, `@version` (sempre crescente), `@author`, `@github` (obrigatório e igual ao autor do PR), `@license`, `@include`, `@architecture`; bloco `==WindhawkModReadme==` em Markdown (imagens só de i.imgur.com ou raw.githubusercontent.com). Envio é um PR com um único arquivo `mods/<id>.wh.cpp`, id igual ao do arquivo.
+- [x] Cabeçalho com `@github` e readme (o que faz, como usar, aviso de Windows 10 não testado e de que o mod age de verdade) adicionados em `src/windows/mod_entry.cpp`.
+- [x] O mod agora executa ações reais (simulação removida do mod em 12/10/2026); só a prévia local simula. Resta revisar o código do executor real antes de publicar.
+- [ ] Publicar somente após as decisões acima. Aceitação dos mantenedores não é garantida.

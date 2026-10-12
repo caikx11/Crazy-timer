@@ -228,6 +228,8 @@ int main(int argc, char** argv) {
     CHECK(decode_snapshot("POWER_TIMER 3\n2 2 0\n"));
     // Version 4 files (no postponement field) remain readable.
     CHECK(decode_snapshot("POWER_TIMER 4\n2 2 1 0\n0\n0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n"));
+    CHECK(decode_snapshot("POWER_TIMER 4\n2 2 1 0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n")); // early v4: no theme/locale lines
+    CHECK(decode_snapshot("POWER_TIMER 4\n1 1 0 0\n")); // early v4, empty
     CHECK(decode_snapshot("POWER_TIMER 5\n2 2 1 0\n0\n0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n"));
     // A postponement is only valid on a weekly rule.
     CHECK(!decode_snapshot("POWER_TIMER 5\n2 2 1 0\n0\n0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 900000\n"));

@@ -23,14 +23,19 @@ sources/ e AGENTS.md sincronizado superior. Launcher oficial. Proteções/ACL/an
 06 avisos múltiplos e configuração de som, revisão/retro; codec atualizado para versão 4 com campo sound_enabled; testes de armazenamento corrigidos.
 
 # Pendências
-1. Atualizar e validar 0.3.0 no Windhawk. Editor elevado continua sem aceitar cliques/teclas do Computer Use; requer interação do usuário. Fonte pronta build/mod/power-timer-simulation.wh.cpp. Não confundir preview com engine.
+1. Atualizar e validar 0.3.0 no Windhawk. Editor elevado continua sem aceitar cliques/teclas do Computer Use; requer interação do usuário. Fonte pronta build/mod/crazy-time.wh.cpp. Não confundir preview com engine.
 2. Próxima fatia sugerida: tarefa 12 (validação Windhawk/Windows10/11).
 3. Matriz Windows10/11, multissessão, DPI/acessibilidade e mudança real de fuso na UI permanecem tarefa12. Publicação/CI/portfólio tarefa13; CI/hook ainda ausentes.
 4. Futura tarefa08: verificar consumidor real com efeito substituível e falha no lote; não repetir o laço no teste. Limites de calendário e recuperação estão documentados nos ADRs.
 
 # Onde parei
-2026-10-11: tarefas 01-07, 10 e 11 implementadas e commitadas; 07 (adiar 10 min, formato POWER_TIMER 5) em 73bd684. Repositório privado em github.com/caikx11/power-timer (branch main). Testes: 241 + 1282 + 32505 + 23 + 5 (avisos) passam; build-mod compila (aviso lpReserved).
-Último trabalho: lógica de avisos extraída para src/warning_tracker.hpp (testada: timer de 2 min avisa uma vez, em 1 min) e usada pelo tray_host; o som da notificação agora segue a opção de som (antes dependia do tema).
-Problema aberto (reportado pelo usuário): num timer de 2 min o aviso de 1 min não apareceu no teste real. A lógica pura está correta; investigar a entrega da notificação (Foco/Não perturbe, NIIF_RESPECT_QUIET_TIME, janela) com a build nova (a confirmar se já resolvido pelo ajuste do som).
-Próxima etapa: tarefa 08 (capacidades de energia e erros, simulado) e 09 (desligamento forçado, simulado); depois 12 (validação Windhawk/Windows 10/11, exige o usuário no editor elevado) e 13.
-Pendente: validar visualmente botões da lista (5) em PT/EN e DPI alto; revisão matt-code-review das tarefas 05-07; PROJECT_CONTEXT.md agora versionado para a sessão na nuvem.
+READMEs: README.md (inglês, página do GitHub) e README.pt-BR.md (português). Release: scripts/package-release.ps1 + docs/releases/ (publicação manual pelo usuário; falta merge na main e tag v0.6.0).
+
+2026-10-12 (tarde): a pedido do usuário, o modo simulação foi REMOVIDO do mod: o funcionamento real é o padrão e não há setting realActions. Textos base agora descrevem ação real; só preview.cpp usa simulation_mode (start(..., simulate=true)) com SimulatedBackend e tabela simulation_texts. Mutex/classe de janela mantêm 'Simulation' no nome (compat). NÃO compilado no Windows: rodar build-mod.ps1 e build-preview.ps1. Preview nunca deve agir de verdade.
+
+2026-10-12 (fim): usuário testou o modo real no Windows 11 (Windhawk, mod crazy-time v0.6.0, opção 'Executar ações reais' ligada) e relatou que tudo funcionou. Sem evidências por ação. A causa do 'só simula' inicial era o mod antigo ainda ativo (mutex de instância única mantido). Falta: code-review do WindowsPowerBackend, screenshots, declaração de IA, decisão sobre publicar.
+
+2026-10-12 (depois): usuário pediu o mod com funcionamento real. Criado src/windows/windows_power_backend.hpp (ExitWindowsEx com EWX_POWEROFF[+EWX_FORCE só com opt-in]; SetSuspendState(hibernate, force=FALSE, disableWake=FALSE); SeShutdownPrivilege com checagem de ERROR_NOT_ALL_ASSIGNED e restauração; capacidades via GetPwrCapabilities carregada dinamicamente, Modern Standby tolerado). Escolha em tempo de execução: setting do mod `realActions` (padrão false; vale após desativar/reativar). Em modo real os textos de simulação são trocados (real_texts em tray_host.hpp). Mod renomeado para id `crazy-time` v0.6.0 (build/mod/crazy-time.wh.cpp); desativar o mod antigo. NÃO testado no Windows (nem compilado): rodar build-mod.ps1, depois ensaio manual com Suspender de 1 min antes de qualquer Desligar. Backend real nunca nos testes automáticos.
+
+2026-10-12: tarefas 01-12 concluídas (08 e 09 só simuladas; 12 apenas Windows 11, por relato do usuário; Windows 10 e multissessão não verificados). Tarefa 13 parcial: README, .github/workflows/ci.yml (portáteis), LICENSE MIT, docs/release-checklist.md. Nome definitivo: Crazy Time (id crazy-time, v0.5.0). Visual claro/escuro validado pelo usuário. Code-review 05-09 feito (achado do codec v4 corrigido). Branch de trabalho: claude/peaceful-brahmagupta-e7mwap (sem PR aberto).
+Pendente: screenshots atuais (claro/escuro, pt/en) em docs/screenshots e README; declaração de assistência por IA; visibilidade/perfil do repositório; formato do catálogo Windhawk; executor real de energia (só em ensaio manual); desativar o mod antigo 'Power Timer' ao instalar o novo. Nada foi publicado no catálogo.

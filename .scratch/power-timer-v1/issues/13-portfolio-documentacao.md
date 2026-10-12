@@ -5,7 +5,7 @@
 **Blocked by:** 12.
 
 **Status:** ready-for-agent
-**Execution:** open
+**Execution:** parcial: README, CI, licença MIT e checklist prontos; faltam screenshots atuais, declaração de IA, perfil/visibilidade e a publicação.
 
 **Histórias da especificação:** 40.
 
