@@ -1,0 +1,20 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  portable-tests:
+    # Só as suítes portáteis. Armazenamento e calendário usam a API Win32 e o
+    # build do mod exige o compilador do Windhawk, então rodam localmente.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compilar e rodar
+        run: |
+          set -e
+          for t in scheduler schedule_book warning_tracker power_executor; do
+            g++ -std=c++23 -Wall -Wextra -Werror -pedantic "tests/${t}_test.cpp" -o "/tmp/${t}"
+            "/tmp/${t}"
+          done

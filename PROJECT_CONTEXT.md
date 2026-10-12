@@ -37,5 +37,6 @@ Tarefa 09 (2026-10-12): núcleo pronto e testado (set_force_shutdown, Delivery.f
 Decisão 2026-10-12: usuário só tem Windows 11; tarefa 12 limitada a Win11 e Windows 10 documentado como NÃO verificado (VM opcional no futuro).
 Caixa 'forçar' agora é owner-draw (draw_force, âmbar, segue tema; estado em force_on_), corrigindo texto preto no tema escuro; NÃO compilada ainda. Roteiro de validação Win11 em docs/validation/task-12-roteiro-win11.md (aguardando execução do usuário).
 2026-10-12 validado pelo usuário no Win11: caixa de forçar (owner-draw), fundo ao trocar tema (RDW_ERASE), menu Opções (Abrir/Config. ocultos com painel visível), tradução completa via localized_/add_l. Pendente do roteiro: bloco 1 (aviso de 1 min) e demais.
+Tarefa 13 (parcial, 2026-10-12): README atualizado, .github/workflows/ci.yml (suítes portáteis), docs/release-checklist.md com pendências (nome, licença, autoria, declaração de IA). Aviso de 1 min validado pelo usuário. Falta: screenshots atuais, restante do roteiro Win11, code-review 05–09.
 Próxima etapa: tarefa 12 (validação Windhawk/Windows 10/11, exige o usuário no editor elevado) e 13.
 Pendente: validar visualmente botões da lista (5) em PT/EN e DPI alto; revisão matt-code-review das tarefas 05-07; PROJECT_CONTEXT.md agora versionado para a sessão na nuvem.
