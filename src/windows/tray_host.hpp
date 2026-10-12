@@ -128,6 +128,7 @@ class Panel {
     HICON icon_{};
     SimulatedBackend backend_;
     HWND force_{};
+    bool force_on_ = false;
     HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{}, postpone_{}, theme_combo_{}, locale_combo_{};
     FileScheduleStorage storage_;
     WindowsCalendar calendar_;
@@ -446,7 +447,7 @@ class Panel {
             weekly_controls_.push_back(days_[i]);
         }
         preview_ = add(L"STATIC", L"", 0, 0, 24, 360, 300, 30, 2);
-        force_ = add(L"BUTTON", get_text(locale_, text::force_label, text_en::force_label), WS_TABSTOP | BS_AUTOCHECKBOX, force_id, 330, 360, 226, 30, 2);
+        force_ = add(L"BUTTON", get_text(locale_, text::force_label, text_en::force_label), WS_TABSTOP | BS_OWNERDRAW, force_id, 330, 360, 226, 30, 2);
         start_ = add(L"BUTTON", get_text(locale_, text::add_schedule, text_en::add_schedule), WS_TABSTOP | BS_OWNERDRAW, schedule_id,
                      24, 400, 344, 36);
         add(L"BUTTON", get_text(locale_, text::new_schedule, text_en::new_schedule), WS_TABSTOP | BS_OWNERDRAW, new_id, 380, 400, 176, 36);
@@ -705,20 +706,22 @@ class Panel {
         if (!tray_added_ && now.monotonic_ms - last_tray_try_ >= 5000) add_tray();
     }
     // Forced close only applies to Shutdown; any other action clears it.
+    void set_force_on(bool on) { force_on_ = on; if (force_) InvalidateRect(force_, nullptr, TRUE); }
     void sync_force() {
         if (!force_) return;
         const bool shutdown = selected_action() == Action::Shutdown;
-        if (!shutdown) SendMessageW(force_, BM_SETCHECK, BST_UNCHECKED, 0);
+        if (!shutdown) set_force_on(false);
         EnableWindow(force_, shutdown);
     }
     void confirm_force() {
-        if (SendMessageW(force_, BM_GETCHECK, 0, 0) != BST_CHECKED) return;
+        set_force_on(!force_on_);  // owner-drawn: toggle by hand
+        if (!force_on_) return;
         if (MessageBoxW(window_, get_text(locale_, text::force_warning, text_en::force_warning),
                 get_text(locale_, text::force_title, text_en::force_title), MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
-            SendMessageW(force_, BM_SETCHECK, BST_UNCHECKED, 0);
+            set_force_on(false);
     }
     bool force_checked() const {
-        return force_ && SendMessageW(force_, BM_GETCHECK, 0, 0) == BST_CHECKED && selected_action() == Action::Shutdown;
+        return force_ && force_on_ && selected_action() == Action::Shutdown;
     }
     void command(int id) {
         if (id >= preset_id && id < preset_id + static_cast<int>(std::size(text::presets))) {
@@ -750,13 +753,13 @@ class Panel {
             show_error(); refresh();
         } else if (id == new_id) {
             editing_id_ = 0; set_text(error_, L"");
-            SendMessageW(force_, BM_SETCHECK, BST_UNCHECKED, 0); sync_force(); refresh();
+            set_force_on(false); sync_force(); refresh();
             SetFocus(selected_kind() == ScheduleKind::Duration ? duration_ : time_);
         } else if (id == edit_id) {
             if (const auto* record = selected_record()) {
                 editing_id_ = record->id;
                 SendMessageW(action_, CB_SETCURSEL, static_cast<WPARAM>(record->action), 0);
-                SendMessageW(force_, BM_SETCHECK, record->force_shutdown ? BST_CHECKED : BST_UNCHECKED, 0); sync_force();
+                set_force_on(record->force_shutdown); sync_force();
                 SendMessageW(kind_, CB_SETCURSEL, static_cast<WPARAM>(record->kind), 0);
                 set_text(duration_, std::to_wstring(record->minutes));
                 if (record->kind != ScheduleKind::Duration) {
@@ -823,6 +826,37 @@ class Panel {
         if (window_) PostMessageW(window_, WM_NULL, 0, 0);
         if (tray_added_) Shell_NotifyIconW(NIM_SETFOCUS, &tray_);
     }
+    // Warning-coloured checkbox, drawn by hand so it follows light/dark/high contrast.
+    void draw_force(const DRAWITEMSTRUCT& draw, bool use_dark, bool disabled) {
+        const COLORREF fill = high_contrast_ ? GetSysColor(COLOR_BTNFACE) : use_dark ? RGB(96, 62, 0) : RGB(255, 233, 170);
+        const COLORREF edge = high_contrast_ ? GetSysColor(COLOR_BTNTEXT) : use_dark ? RGB(255, 190, 70) : RGB(200, 120, 0);
+        const COLORREF text = disabled ? GetSysColor(COLOR_GRAYTEXT) : high_contrast_ ? GetSysColor(COLOR_BTNTEXT) :
+            use_dark ? RGB(255, 236, 190) : RGB(60, 38, 0);
+        HBRUSH brush = CreateSolidBrush(fill);
+        HPEN pen = CreatePen(PS_SOLID, px(2), edge);
+        const auto old_brush = SelectObject(draw.hDC, brush);
+        const auto old_pen = SelectObject(draw.hDC, pen);
+        RoundRect(draw.hDC, draw.rcItem.left, draw.rcItem.top, draw.rcItem.right, draw.rcItem.bottom, px(10), px(10));
+        const int box = px(18), top = (draw.rcItem.top + draw.rcItem.bottom - box) / 2, left = draw.rcItem.left + px(10);
+        SelectObject(draw.hDC, GetStockObject(NULL_BRUSH));
+        Rectangle(draw.hDC, left, top, left + box, top + box);
+        if (force_on_) {
+            MoveToEx(draw.hDC, left + px(4), top + box / 2, nullptr);
+            LineTo(draw.hDC, left + box / 2 - px(1), top + box - px(5));
+            LineTo(draw.hDC, left + box - px(4), top + px(4));
+        }
+        SelectObject(draw.hDC, old_brush); SelectObject(draw.hDC, old_pen);
+        DeleteObject(brush); DeleteObject(pen);
+        HFONT old_font = fonts_[2] ? static_cast<HFONT>(SelectObject(draw.hDC, fonts_[2])) : nullptr;
+        wchar_t label[128]{};
+        GetWindowTextW(draw.hwndItem, label, 128);
+        SetBkMode(draw.hDC, TRANSPARENT);
+        SetTextColor(draw.hDC, text);
+        RECT rect = draw.rcItem; rect.left = left + box + px(8); rect.right -= px(6);
+        DrawTextW(draw.hDC, label, -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        if (draw.itemState & ODS_FOCUS) { RECT focus = draw.rcItem; InflateRect(&focus, -px(3), -px(3)); DrawFocusRect(draw.hDC, &focus); }
+        if (old_font) SelectObject(draw.hDC, old_font);
+    }
     void draw_button(const DRAWITEMSTRUCT& draw) {
         const bool primary = draw.CtlID == schedule_id;
         const bool disabled = (draw.itemState & ODS_DISABLED) != 0;
@@ -841,6 +875,7 @@ class Panel {
             (high_contrast_ ? GetSysColor(COLOR_BTNTEXT) : RGB(255, 255, 255)) :
             use_dark ? RGB(240, 240, 240) : RGB(24, 35, 53);
 
+        if (draw.CtlID == force_id) { draw_force(draw, use_dark, disabled); return; }
         HBRUSH brush = CreateSolidBrush(fill);
         HPEN pen = CreatePen(PS_SOLID, 1, fill);
         const auto old_brush = SelectObject(draw.hDC, brush);
