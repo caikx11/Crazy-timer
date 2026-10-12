@@ -40,6 +40,8 @@ No PowerShell 7, na raiz do projeto:
 ./scripts/build-mod.ps1
 ```
 
+**Instalação fácil:** quando houver um release, baixe `crazy-time.wh.cpp` na página de [Releases](../../releases) e cole no editor do Windhawk (passo a passo no texto do release). Para publicar um release, veja [docs/releases/README.md](docs/releases/README.md).
+
 Os scripts usam o compilador instalado com Windhawk. A interface executável fica em `build/preview/`; fonte única para o editor e DLL de conferência ficam em `build/mod/`. Consulte a instalação local antes de ativar o mod.
 
 O CI (`.github/workflows/ci.yml`) roda apenas as suítes portáteis em Linux; armazenamento, calendário e build do mod exigem Windows e o compilador do Windhawk.

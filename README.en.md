@@ -24,7 +24,9 @@ Tested on Windows 11 with Windhawk 1.7.x. **Windows 10 has not been verified.** 
 
 ## Install (local build)
 
-You need Windhawk with its compiler installed (`C:\Program Files\Windhawk`) and PowerShell.
+**Easy install:** once a release exists, download `crazy-time.wh.cpp` from the [Releases](../../releases) page and paste it into the Windhawk editor (steps are in the release notes).
+
+To build it yourself, you need Windhawk with its compiler installed (`C:\Program Files\Windhawk`) and PowerShell.
 
 ```powershell
 ./scripts/test.ps1            # scheduler, schedule book, storage, calendar, warnings
