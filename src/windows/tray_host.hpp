@@ -26,6 +26,7 @@
 #include "local_calendar.hpp"
 #include "../strings.hpp"
 #include "../strings_en.hpp"
+#include "../warning_tracker.hpp"
 
 namespace power_timer::windows {
 inline const wchar_t* get_text(unsigned locale, const wchar_t* pt_br, const wchar_t* en) {
@@ -137,7 +138,7 @@ class Panel {
     std::wstring conflict_signature_;
     bool rebuilding_list_ = false;
     std::unordered_set<std::uint64_t> warned_;
-    std::unordered_set<std::uint64_t> warned_thresholds_; // occurrence_id * 10 + threshold_index
+    WarningTracker warnings_;
     NOTIFYICONDATAW tray_{};
     UINT taskbar_created_{};
     UINT dpi_ = 96;
@@ -526,14 +527,9 @@ class Panel {
         wcsncpy_s(notice.szInfoTitle, title, _TRUNCATE);
         wcsncpy_s(notice.szInfo, body, _TRUNCATE);
         // Respect sound setting: NIIF_NOSOUND only if sound disabled
-        UINT sound_flag = book_.get_theme() & 1 ? 0 : NIIF_NOSOUND;
+        const UINT sound_flag = book_.get_sound_enabled() ? 0 : NIIF_NOSOUND;
         notice.dwInfoFlags = NIIF_INFO | sound_flag | NIIF_RESPECT_QUIET_TIME;
         Shell_NotifyIconW(NIM_MODIFY, &notice);
-
-        // Play system beep if sound enabled (fallback to MessageBeep if PlaySound fails)
-        if (book_.get_sound_enabled()) {
-            MessageBeep(MB_OK); // Simple system beep
-        }
     }
     const ScheduleRecord* selected_record() const {
         for (const auto& record : book_.list()) if (record.id == selected_id_) return &record;
@@ -620,78 +616,28 @@ class Panel {
                 recorded ? get_text(locale_, text::completed_detail, text_en::completed_detail) : get_text(locale_, text::uncertain_detail, text_en::uncertain_detail));
             if (!recorded) break;
         }
-        // Multi-threshold warnings: 30min, 15min, 10min, 5min, 1min (existing warning_ms)
-        // Check from largest to smallest threshold to ensure we fire the highest applicable threshold first
-        const std::array<std::pair<std::uint64_t, size_t>, 5> thresholds = {{
-            {30ULL * 60 * 1000, 0},  // 30 minutes
-            {15ULL * 60 * 1000, 1},  // 15 minutes
-            {10ULL * 60 * 1000, 2},  // 10 minutes
-            {5ULL * 60 * 1000, 3},   // 5 minutes
-            {Scheduler::warning_ms, 4} // 1 minute (existing)
-        }};
-
+        // Countdown warnings: 30, 15, 10, 5 and 1 minute (see WarningTracker).
         for (const auto& record : book_.list()) {
             if (!book_.writable()) break;
             if (record.state != OccurrenceState::Scheduled || record.paused || record.conflict_with) continue;
-
-            const auto remaining = book_.remaining_ms(record.id, now);
-            if (remaining == 0) continue; // Skip expired
-
-            // Thresholds already crossed the first time this occurrence is seen (e.g. a
-            // 5 minute timer) were never "reached" by the countdown: mark them without notifying.
-            const auto seen_key = record.occurrence_id * 10 + 9;
-            const bool first_sight = warned_thresholds_.insert(seen_key).second;
-            // Only the tightest crossed threshold applies; wider ones are marked silently.
-            int applicable = -1;
-            for (int i = 0; i < static_cast<int>(thresholds.size()); ++i)
-                if (remaining <= thresholds[i].first) applicable = i;
-            if (applicable < 0) continue;
-            for (int i = 0; i < applicable; ++i)
-                warned_thresholds_.insert(record.occurrence_id * 10 + thresholds[i].second);
-            if (first_sight) {
-                warned_thresholds_.insert(record.occurrence_id * 10 + thresholds[applicable].second);
-                continue;
+            const auto index = warnings_.due(record.occurrence_id, book_.remaining_ms(record.id, now));
+            if (!index) continue;
+            const wchar_t* title = get_text(locale_, text::warning, text_en::warning);
+            const wchar_t* body = get_text(locale_, text::countdown_notification, text_en::countdown_notification);
+            switch (*index) {
+                case 0: title = get_text(locale_, text::warning_30min, text_en::warning_30min);
+                        body = get_text(locale_, text::warning_30min_detail, text_en::warning_30min_detail); break;
+                case 1: title = get_text(locale_, text::warning_15min, text_en::warning_15min);
+                        body = get_text(locale_, text::warning_15min_detail, text_en::warning_15min_detail); break;
+                case 2: title = get_text(locale_, text::warning_10min, text_en::warning_10min);
+                        body = get_text(locale_, text::warning_10min_detail, text_en::warning_10min_detail); break;
+                case 3: title = get_text(locale_, text::warning_5min, text_en::warning_5min);
+                        body = get_text(locale_, text::warning_5min_detail, text_en::warning_5min_detail); break;
+                default: break; // 1 minute: the default texts above
             }
-            {
-                const auto threshold_index = thresholds[applicable].second;
-                {
-                    const auto warn_key = record.occurrence_id * 10 + threshold_index;
-                    if (warned_thresholds_.insert(warn_key).second) {
-                        // Select appropriate message based on threshold
-                        const wchar_t* title = get_text(locale_, text::warning, text_en::warning);
-                        const wchar_t* body = get_text(locale_, text::countdown_notification, text_en::countdown_notification); // fallback
-
-                        switch (threshold_index) {
-                            case 0: // 30 minutes
-                                title = get_text(locale_, text::warning_30min, text_en::warning_30min);
-                                body = get_text(locale_, text::warning_30min_detail, text_en::warning_30min_detail);
-                                break;
-                            case 1: // 15 minutes
-                                title = get_text(locale_, text::warning_15min, text_en::warning_15min);
-                                body = get_text(locale_, text::warning_15min_detail, text_en::warning_15min_detail);
-                                break;
-                            case 2: // 10 minutes
-                                title = get_text(locale_, text::warning_10min, text_en::warning_10min);
-                                body = get_text(locale_, text::warning_10min_detail, text_en::warning_10min_detail);
-                                break;
-                            case 3: // 5 minutes
-                                title = get_text(locale_, text::warning_5min, text_en::warning_5min);
-                                body = get_text(locale_, text::warning_5min_detail, text_en::warning_5min_detail);
-                                break;
-                            case 4: // 1 minute (existing)
-                                title = get_text(locale_, text::warning, text_en::warning);
-                                body = get_text(locale_, text::countdown_notification, text_en::countdown_notification);
-                                break;
-                        }
-
-                        notify(title, body);
-                        // Don't show() here - only show for the 1-minute warning to avoid too many popups
-                        if (threshold_index == 4) { // 1-minute warning
-                            show(false);
-                        }
-                    }
-                }
-            }
+            notify(title, body);
+            // Only the 1-minute warning brings the panel up, to avoid too many popups.
+            if (*index == 4) show(false);
         }
         std::wstring conflicts;
         for (const auto& record : book_.list()) if (record.conflict_with)
@@ -792,12 +738,8 @@ class Panel {
                 if (id == postpone_id) {
                     const auto now = clock_sample();
                     if (book_.postpone(selected, 10, now)) {
-                        // Only warnings still ahead of the new deadline may fire again; the
-                        // occurrence keeps its identity, so crossed-and-passed ones stay marked.
-                        const auto remaining = book_.remaining_ms(selected, now);
-                        const std::uint64_t limits[] = {30ULL * 60000, 15ULL * 60000, 10ULL * 60000, 5ULL * 60000, Scheduler::warning_ms};
-                        for (std::size_t i = 0; i < std::size(limits); ++i)
-                            if (remaining > limits[i]) warned_thresholds_.erase(occurrence * 10 + i);
+                        // Only warnings still ahead of the new deadline may fire again.
+                        warnings_.reopen_ahead_of(occurrence, book_.remaining_ms(selected, now));
                     }
                 } else if (id == pause_id) book_.set_paused(selected, !record->paused, clock_sample());
                 else if (id == erase_id) {
