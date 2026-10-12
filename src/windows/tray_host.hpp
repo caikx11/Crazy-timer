@@ -336,6 +336,9 @@ class Panel {
         apply(date_, L"DarkMode_CFD");
         apply(time_, L"DarkMode_CFD");
         if (list_) {
+            ListView_SetTextColor(list_, ink_);
+            ListView_SetTextBkColor(list_, bg_);
+            ListView_SetBkColor(list_, bg_);
             apply(list_, L"DarkMode_Explorer");
             apply(ListView_GetHeader(list_), L"DarkMode_ItemsView");
         }
@@ -1012,6 +1015,14 @@ public:
                 return 0;
             case WM_NOTIFY: {
                 const auto* header = reinterpret_cast<NMHDR*>(lparam);
+                // Dark theme: the column header ignores the list text colour, so force light text.
+                if (self->dark_ && !self->high_contrast_ && self->list_ && header->code == NM_CUSTOMDRAW &&
+                    header->hwndFrom == ListView_GetHeader(self->list_)) {
+                    const auto* draw = reinterpret_cast<NMCUSTOMDRAW*>(lparam);
+                    if (draw->dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+                    if (draw->dwDrawStage == CDDS_ITEMPREPAINT) { SetTextColor(draw->hdc, self->ink_); return CDRF_NEWFONT; }
+                    return CDRF_DODEFAULT;
+                }
                 if ((header->idFrom == date_id || header->idFrom == time_id) && header->code == DTN_DATETIMECHANGE) self->preview();
                 if (header->idFrom == list_id && header->code == LVN_ITEMCHANGED && !self->rebuilding_list_) {
                     const int row = ListView_GetNextItem(self->list_, -1, LVNI_SELECTED);
