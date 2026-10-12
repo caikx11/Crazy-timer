@@ -128,6 +128,7 @@ class Panel {
     HICON icon_{};
     SimulatedBackend backend_;
     HWND force_{};
+    std::vector<std::pair<HWND, std::pair<const wchar_t*, const wchar_t*>>> localized_;
     bool force_on_ = false;
     HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{}, postpone_{}, theme_combo_{}, locale_combo_{};
     FileScheduleStorage storage_;
@@ -163,101 +164,53 @@ class Panel {
         items_.push_back({control, x, y, width, height, font});
         return control;
     }
+    // Creates a control whose caption follows the selected language.
+    HWND add_l(const wchar_t* type, const wchar_t* pt, const wchar_t* en, DWORD style, int id,
+               int x, int y, int width, int height, int font = 0, DWORD ex = 0) {
+        HWND control = add(type, get_text(locale_, pt, en), style, id, x, y, width, height, font, ex);
+        localized_.push_back({control, {pt, en}});
+        return control;
+    }
+    void fill_choice_combos() {
+        if (theme_combo_) {
+            SendMessageW(theme_combo_, CB_RESETCONTENT, 0, 0);
+            for (std::size_t i = 0; i < std::size(text::theme_strings); ++i)
+                SendMessageW(theme_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::theme_strings[i], text_en::theme_strings[i])));
+            SendMessageW(theme_combo_, CB_SETCURSEL, static_cast<WPARAM>(theme_value_), 0);
+        }
+        if (action_) {
+            const auto keep = SendMessageW(action_, CB_GETCURSEL, 0, 0);
+            SendMessageW(action_, CB_RESETCONTENT, 0, 0);
+            for (std::size_t i = 0; i < std::size(text::actions); ++i)
+                SendMessageW(action_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::actions[i], text_en::actions[i])));
+            SendMessageW(action_, CB_SETCURSEL, keep < 0 ? 0 : keep, 0);
+        }
+        if (kind_) {
+            const auto keep = SendMessageW(kind_, CB_GETCURSEL, 0, 0);
+            SendMessageW(kind_, CB_RESETCONTENT, 0, 0);
+            for (std::size_t i = 0; i < std::size(text::kinds); ++i)
+                SendMessageW(kind_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::kinds[i], text_en::kinds[i])));
+            SendMessageW(kind_, CB_SETCURSEL, keep < 0 ? 0 : keep, 0);
+        }
+    }
     void refresh_locale_text() {
         if (!window_) return;
-
-        // Update window title
         SetWindowTextW(window_, get_text(locale_, text::title, text_en::title));
-
-        // Update static text controls
-        SetWindowTextW(GetDlgItem(window_, 0), get_text(locale_, text::brand, text_en::brand)); // Brand
-        SetWindowTextW(GetDlgItem(window_, 1), get_text(locale_, text::simulation, text_en::simulation)); // Simulation
-        SetWindowTextW(GetDlgItem(window_, 2), get_text(locale_, text::subtitle, text_en::subtitle)); // Subtitle
-        SetWindowTextW(GetDlgItem(window_, 3), get_text(locale_, text::options, text_en::options)); // Options button
-        SetWindowTextW(GetDlgItem(window_, 4), get_text(locale_, text::theme_label, text_en::theme_label)); // Tema label
-        SetWindowTextW(GetDlgItem(window_, 5), get_text(locale_, text::language_label, text_en::language_label)); // Idioma label
-        SetWindowTextW(GetDlgItem(window_, 6), get_text(locale_, text::action_label, text_en::action_label)); // Action label
-        SetWindowTextW(GetDlgItem(window_, 7), get_text(locale_, text::kind_label, text_en::kind_label)); // Kind label
-        SetWindowTextW(GetDlgItem(window_, 8), get_text(locale_, text::duration_label, text_en::duration_label)); // Duration label
-        SetWindowTextW(GetDlgItem(window_, 9), get_text(locale_, text::date_label, text_en::date_label)); // Date label
-        SetWindowTextW(GetDlgItem(window_, 10), get_text(locale_, text::time_label, text_en::time_label)); // Time label
-        SetWindowTextW(GetDlgItem(window_, 11), get_text(locale_, text::weekly_label, text_en::weekly_label)); // Weekly label
-        SetWindowTextW(GetDlgItem(window_, 12), get_text(locale_, text::daily, text_en::daily)); // Daily button
-        SetWindowTextW(GetDlgItem(window_, 13), get_text(locale_, text::duration_hint, text_en::duration_hint)); // Duration hint
-
-        // Update buttons that depend on state
-        SetWindowTextW(GetDlgItem(window_, 15), editing_id_ ? get_text(locale_, text::save_schedule, text_en::save_schedule) : get_text(locale_, text::add_schedule, text_en::add_schedule)); // Add schedule
-        SetWindowTextW(GetDlgItem(window_, 16), get_text(locale_, text::new_schedule, text_en::new_schedule)); // New schedule
-        SetWindowTextW(GetDlgItem(window_, 17), get_text(locale_, text::schedules, text_en::schedules)); // Schedules label
-        if (edit_) set_text(edit_, get_text(locale_, text::edit, text_en::edit));
-
-        // Update pause button based on state
-        if (selected_record() && selected_record()->paused) {
-            SetWindowTextW(GetDlgItem(window_, 19), get_text(locale_, text::resume, text_en::resume));
-        } else {
-            SetWindowTextW(GetDlgItem(window_, 19), get_text(locale_, text::pause, text_en::pause));
-        }
-
-        if (erase_) set_text(erase_, get_text(locale_, text::erase, text_en::erase));
-        if (cancel_) set_text(cancel_, get_text(locale_, text::cancel, text_en::cancel));
-        if (postpone_) set_text(postpone_, get_text(locale_, text::postpone, text_en::postpone));
-
-        // Update status and other dynamic text (will be updated by refresh())
-        if (selected_record()) {
-            SetWindowTextW(GetDlgItem(window_, 22), state_label(*selected_record()));
-        } else {
-            SetWindowTextW(GetDlgItem(window_, 22), get_text(locale_, text::idle, text_en::idle));
-        }
-
-        // Update locale combo box items and selection
+        for (const auto& item : localized_) SetWindowTextW(item.first, get_text(locale_, item.second.first, item.second.second));
+        // Texts that depend on state.
+        set_text(start_, editing_id_ ? get_text(locale_, text::save_schedule, text_en::save_schedule) : get_text(locale_, text::add_schedule, text_en::add_schedule));
+        if (pause_) set_text(pause_, selected_record() && selected_record()->paused ? get_text(locale_, text::resume, text_en::resume) : get_text(locale_, text::pause, text_en::pause));
         if (locale_combo_) {
             SendMessageW(locale_combo_, CB_RESETCONTENT, 0, 0);
             SendMessageW(locale_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::portuguese, text_en::portuguese)));
             SendMessageW(locale_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::english, text_en::english)));
             SendMessageW(locale_combo_, CB_SETCURSEL, static_cast<WPARAM>(locale_), 0);
         }
-
-        // Update theme combo box items and selection
-        if (theme_combo_) {
-            SendMessageW(theme_combo_, CB_RESETCONTENT, 0, 0);
-            for (const auto* theme : text::theme_strings) SendMessageW(theme_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(theme));
-            SendMessageW(theme_combo_, CB_SETCURSEL, static_cast<WPARAM>(theme_value_), 0);
-        }
-
-        if (force_) SetWindowTextW(force_, get_text(locale_, text::force_label, text_en::force_label));
-        // Update action combo box
-        if (action_) {
-            SendMessageW(action_, CB_RESETCONTENT, 0, 0);
-            for (const auto* action : text::actions) SendMessageW(action_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(action));
-            if (selected_record()) SendMessageW(action_, CB_SETCURSEL, static_cast<WPARAM>(selected_record()->action), 0);
-            else SendMessageW(action_, CB_SETCURSEL, 0, 0);
-        }
-
-        // Update kind combo box
-        if (kind_) {
-            SendMessageW(kind_, CB_RESETCONTENT, 0, 0);
-            for (const auto* kind : text::kinds) SendMessageW(kind_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(kind));
-            if (selected_record()) SendMessageW(kind_, CB_SETCURSEL, static_cast<WPARAM>(selected_record()->kind), 0);
-            else SendMessageW(kind_, CB_SETCURSEL, 0, 0);
-        }
-
-        // Update preset buttons
-        for (int i = 0; i < static_cast<int>(std::size(text::presets)); ++i) {
-            HWND preset = GetDlgItem(window_, preset_id + i);
-            if (preset) {
-                SetWindowTextW(preset, text::presets[i].label);
-            }
-        }
-
-        // Update day buttons
-        for (int i = 0; i < 7; ++i) {
-            HWND day = GetDlgItem(window_, weekday_id + i);
-            if (day) {
-                SetWindowTextW(day, text::weekdays[i]);
-            }
-        }
-
-        // Update list column headers
+        fill_choice_combos();
+        for (int i = 0; i < static_cast<int>(std::size(text::presets)); ++i)
+            if (HWND preset = GetDlgItem(window_, preset_id + i)) SetWindowTextW(preset, get_text(locale_, text::presets[i].label, text_en::presets[i].label));
+        for (int i = 0; i < 7; ++i)
+            if (days_[i]) SetWindowTextW(days_[i], get_text(locale_, text::weekdays[i], text_en::weekdays[i]));
         if (list_) {
             const wchar_t* labels[] = {get_text(locale_, text::id_column, text_en::id_column), get_text(locale_, text::action_column, text_en::action_column), get_text(locale_, text::due_column, text_en::due_column), get_text(locale_, text::state_column, text_en::state_column), get_text(locale_, text::rule_column, text_en::rule_column)};
             const int widths[] = {40, 80, 172, 130, 80};
@@ -267,28 +220,7 @@ class Panel {
                 ListView_SetColumn(list_, i, &column);
             }
         }
-
-        // Update other buttons
-        if (open_id) {
-            HWND open_btn = GetDlgItem(window_, open_id);
-            if (open_btn) set_text(open_btn, get_text(locale_, text::open, text_en::open));
-        }
-        if (settings_id) {
-            HWND settings_btn = GetDlgItem(window_, settings_id);
-            if (settings_btn) set_text(settings_btn, get_text(locale_, text::settings, text_en::settings));
-        }
-        if (visibility_id) {
-            HWND visibility_btn = GetDlgItem(window_, visibility_id);
-            if (visibility_btn) set_text(visibility_btn, get_text(locale_, text::notification_settings, text_en::notification_settings));
-        }
-        if (menu_id) {
-            HWND menu_btn = GetDlgItem(window_, menu_id);
-            if (menu_btn) set_text(menu_btn, get_text(locale_, text::options, text_en::options));
-        }
-        if (exit_id) {
-            HWND exit_btn = GetDlgItem(window_, exit_id);
-            if (exit_btn) set_text(exit_btn, get_text(locale_, text::exit, text_en::exit));
-        }
+        list_signature_.clear();
 
         // Refresh dynamic content
         preview();
@@ -386,72 +318,69 @@ class Panel {
         }
     }
     void controls() {
-        add(L"STATIC", get_text(locale_, text::brand, text_en::brand), 0, 0, 24, 20, 360, 36, 1);
-        add(L"STATIC", get_text(locale_, text::simulation, text_en::simulation), SS_RIGHT, 0, 454, 28, 102, 20, 2);
-        add(L"STATIC", get_text(locale_, text::subtitle, text_en::subtitle), 0, 0, 24, 60, 360, 22);
-        add(L"BUTTON", get_text(locale_, text::options, text_en::options), WS_TABSTOP | BS_OWNERDRAW, menu_id, 484, 58, 72, 28, 2);
+        add_l(L"STATIC", text::brand, text_en::brand, 0, 0, 24, 20, 360, 36, 1);
+        add_l(L"STATIC", text::simulation, text_en::simulation, SS_RIGHT, 0, 454, 28, 102, 20, 2);
+        add_l(L"STATIC", text::subtitle, text_en::subtitle, 0, 0, 24, 60, 360, 22);
+        add_l(L"BUTTON", text::options, text_en::options, WS_TABSTOP | BS_OWNERDRAW, menu_id, 484, 58, 72, 28, 2);
 
         // Theme selection near other combos for logical tab order
-        add(L"STATIC", get_text(locale_, text::theme_label, text_en::theme_label), 0, 0, 24, 100, 254, 22);
+        add_l(L"STATIC", text::theme_label, text_en::theme_label, 0, 0, 24, 100, 254, 22);
         theme_combo_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
                      theme_id, 24, 125, 254, 180);
-        for (const auto* theme : text::theme_strings) SendMessageW(theme_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(theme));
         SendMessageW(theme_combo_, CB_SETCURSEL, static_cast<WPARAM>(theme_value_), 0);
 
         // Language selection
-        add(L"STATIC", get_text(locale_, text::language_label, text_en::language_label), 0, 0, 24, 170, 254, 22);
+        add_l(L"STATIC", text::language_label, text_en::language_label, 0, 0, 24, 170, 254, 22);
         locale_combo_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
                      locale_id, 24, 195, 254, 180);
         SendMessageW(locale_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::portuguese, text_en::portuguese)));
 
         // Kind selection: right column, same row as language
-        add(L"STATIC", get_text(locale_, text::kind_label, text_en::kind_label), 0, 0, 304, 170, 252, 22);
+        add_l(L"STATIC", text::kind_label, text_en::kind_label, 0, 0, 304, 170, 252, 22);
         kind_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
                     kind_id, 304, 195, 252, 160);
         SendMessageW(locale_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::english, text_en::english)));
         SendMessageW(locale_combo_, CB_SETCURSEL, static_cast<WPARAM>(book_.get_locale()), 0);
 
-        add(L"STATIC", get_text(locale_, text::action_label, text_en::action_label), 0, 0, 304, 100, 252, 22);
+        add_l(L"STATIC", text::action_label, text_en::action_label, 0, 0, 304, 100, 252, 22);
         action_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
                       action_id, 304, 125, 252, 180);
-        for (const auto* action : text::actions) SendMessageW(action_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(action));
         SendMessageW(action_, CB_SETCURSEL, 0, 0);
-        for (const auto* kind : text::kinds) SendMessageW(kind_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(kind));
         SendMessageW(kind_, CB_SETCURSEL, 0, 0);
-        duration_controls_.push_back(add(L"STATIC", get_text(locale_, text::duration_label, text_en::duration_label), 0, 0, 24, 240, 254, 22));
+        duration_controls_.push_back(add_l(L"STATIC", text::duration_label, text_en::duration_label, 0, 0, 24, 240, 254, 22));
         duration_ = add(L"EDIT", L"30", WS_TABSTOP | ES_AUTOHSCROLL, duration_id,
                         24, 265, 254, 34, 0, WS_EX_CLIENTEDGE);
         duration_controls_.push_back(duration_);
         SendMessageW(duration_, EM_SETLIMITTEXT, 32, 0);
-        duration_controls_.push_back(add(L"STATIC", get_text(locale_, text::duration_hint, text_en::duration_hint), 0, 0, 304, 272, 252, 22, 2));
+        duration_controls_.push_back(add_l(L"STATIC", text::duration_hint, text_en::duration_hint, 0, 0, 304, 272, 252, 22, 2));
         for (int i = 0; i < static_cast<int>(std::size(text::presets)); ++i)
-            duration_controls_.push_back(add(L"BUTTON", text::presets[i].label, WS_TABSTOP | BS_OWNERDRAW, preset_id + i,
+            duration_controls_.push_back(add(L"BUTTON", get_text(locale_, text::presets[i].label, text_en::presets[i].label), WS_TABSTOP | BS_OWNERDRAW, preset_id + i,
                 24 + 136 * i, 315, 124, 32, 2));
-        once_controls_.push_back(add(L"STATIC", get_text(locale_, text::date_label, text_en::date_label), 0, 0, 24, 240, 254, 22));
+        once_controls_.push_back(add_l(L"STATIC", text::date_label, text_en::date_label, 0, 0, 24, 240, 254, 22));
         date_ = add(DATETIMEPICK_CLASSW, L"", WS_TABSTOP | DTS_SHORTDATEFORMAT, date_id, 24, 265, 254, 34);
         SendMessageW(date_, DTM_SETFORMATW, 0, reinterpret_cast<LPARAM>(L"dd/MM/yyyy"));
         SYSTEMTIME range[2]{}; range[0].wYear = 1970; range[0].wMonth = 1; range[0].wDay = 1;
         range[1].wYear = 9999; range[1].wMonth = 12; range[1].wDay = 31;
         DateTime_SetRange(date_, GDTR_MIN | GDTR_MAX, range);
         once_controls_.push_back(date_);
-        calendar_controls_.push_back(add(L"STATIC", get_text(locale_, text::time_label, text_en::time_label), 0, 0, 304, 240, 252, 22));
+        calendar_controls_.push_back(add_l(L"STATIC", text::time_label, text_en::time_label, 0, 0, 304, 240, 252, 22));
         time_ = add(DATETIMEPICK_CLASSW, L"", WS_TABSTOP | DTS_TIMEFORMAT | DTS_UPDOWN, time_id, 304, 265, 252, 34);
         SendMessageW(time_, DTM_SETFORMATW, 0, reinterpret_cast<LPARAM>(L"HH:mm"));
         calendar_controls_.push_back(time_);
-        weekly_controls_.push_back(add(L"STATIC", get_text(locale_, text::weekly_label, text_en::weekly_label), 0, 0, 24, 240, 254, 22, 2));
-        weekly_controls_.push_back(add(L"BUTTON", get_text(locale_, text::daily, text_en::daily), WS_TABSTOP | BS_OWNERDRAW, daily_id, 24, 265, 254, 34, 2));
+        weekly_controls_.push_back(add_l(L"STATIC", text::weekly_label, text_en::weekly_label, 0, 0, 24, 240, 254, 22, 2));
+        weekly_controls_.push_back(add_l(L"BUTTON", text::daily, text_en::daily, WS_TABSTOP | BS_OWNERDRAW, daily_id, 24, 265, 254, 34, 2));
         for (int i = 0; i < 7; ++i) {
-            days_[i] = add(L"BUTTON", text::weekdays[i], WS_TABSTOP | BS_AUTOCHECKBOX, weekday_id + i,
+            days_[i] = add(L"BUTTON", get_text(locale_, text::weekdays[i], text_en::weekdays[i]), WS_TABSTOP | BS_AUTOCHECKBOX, weekday_id + i,
                            24 + 76 * i, 315, 74, 30, 2);
             SendMessageW(days_[i], BM_SETCHECK, BST_CHECKED, 0);
             weekly_controls_.push_back(days_[i]);
         }
         preview_ = add(L"STATIC", L"", 0, 0, 24, 360, 300, 30, 2);
-        force_ = add(L"BUTTON", get_text(locale_, text::force_label, text_en::force_label), WS_TABSTOP | BS_OWNERDRAW, force_id, 330, 360, 226, 30, 2);
-        start_ = add(L"BUTTON", get_text(locale_, text::add_schedule, text_en::add_schedule), WS_TABSTOP | BS_OWNERDRAW, schedule_id,
+        force_ = add_l(L"BUTTON", text::force_label, text_en::force_label, WS_TABSTOP | BS_OWNERDRAW, force_id, 330, 360, 226, 30, 2);
+        start_ = add_l(L"BUTTON", text::add_schedule, text_en::add_schedule, WS_TABSTOP | BS_OWNERDRAW, schedule_id,
                      24, 400, 344, 36);
-        add(L"BUTTON", get_text(locale_, text::new_schedule, text_en::new_schedule), WS_TABSTOP | BS_OWNERDRAW, new_id, 380, 400, 176, 36);
-        add(L"STATIC", get_text(locale_, text::schedules, text_en::schedules), 0, 0, 24, 450, 532, 22);
+        add_l(L"BUTTON", text::new_schedule, text_en::new_schedule, WS_TABSTOP | BS_OWNERDRAW, new_id, 380, 400, 176, 36);
+        add_l(L"STATIC", text::schedules, text_en::schedules, 0, 0, 24, 450, 532, 22);
         list_ = add(WC_LISTVIEWW, L"", WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
                     list_id, 24, 476, 532, 120, 2, WS_EX_CLIENTEDGE);
         ListView_SetExtendedListViewStyle(list_, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
@@ -462,17 +391,18 @@ class Panel {
             column.pszText = const_cast<wchar_t*>(labels[i]); column.cx = px(widths[i]);
             ListView_InsertColumn(list_, i, &column);
         }
-        edit_ = add(L"BUTTON", get_text(locale_, text::edit, text_en::edit), WS_TABSTOP | BS_OWNERDRAW, edit_id, 24, 608, 76, 36, 2);
-        pause_ = add(L"BUTTON", get_text(locale_, text::pause, text_en::pause), WS_TABSTOP | BS_OWNERDRAW, pause_id, 108, 608, 84, 36, 2);
-        erase_ = add(L"BUTTON", get_text(locale_, text::erase, text_en::erase), WS_TABSTOP | BS_OWNERDRAW, erase_id, 200, 608, 76, 36, 2);
-        cancel_ = add(L"BUTTON", get_text(locale_, text::cancel, text_en::cancel), WS_TABSTOP | BS_OWNERDRAW, cancel_id, 284, 608, 140, 36, 2);
-        postpone_ = add(L"BUTTON", get_text(locale_, text::postpone, text_en::postpone), WS_TABSTOP | BS_OWNERDRAW, postpone_id, 432, 608, 124, 36, 2);
-        status_ = add(L"STATIC", get_text(locale_, text::idle, text_en::idle), SS_CENTER, 0, 24, 660, 532, 24);
-        countdown_ = add(L"STATIC", get_text(locale_, text::clock_empty, text_en::clock_empty), SS_CENTER, 0, 24, 688, 532, 56, 3);
-        detail_ = add(L"STATIC", get_text(locale_, text::idle_detail, text_en::idle_detail), SS_CENTER, 0, 24, 748, 532, 40, 2);
+        edit_ = add_l(L"BUTTON", text::edit, text_en::edit, WS_TABSTOP | BS_OWNERDRAW, edit_id, 24, 608, 76, 36, 2);
+        pause_ = add_l(L"BUTTON", text::pause, text_en::pause, WS_TABSTOP | BS_OWNERDRAW, pause_id, 108, 608, 84, 36, 2);
+        erase_ = add_l(L"BUTTON", text::erase, text_en::erase, WS_TABSTOP | BS_OWNERDRAW, erase_id, 200, 608, 76, 36, 2);
+        cancel_ = add_l(L"BUTTON", text::cancel, text_en::cancel, WS_TABSTOP | BS_OWNERDRAW, cancel_id, 284, 608, 140, 36, 2);
+        postpone_ = add_l(L"BUTTON", text::postpone, text_en::postpone, WS_TABSTOP | BS_OWNERDRAW, postpone_id, 432, 608, 124, 36, 2);
+        status_ = add_l(L"STATIC", text::idle, text_en::idle, SS_CENTER, 0, 24, 660, 532, 24);
+        countdown_ = add_l(L"STATIC", text::clock_empty, text_en::clock_empty, SS_CENTER, 0, 24, 688, 532, 56, 3);
+        detail_ = add_l(L"STATIC", text::idle_detail, text_en::idle_detail, SS_CENTER, 0, 24, 748, 532, 40, 2);
         error_ = add(L"STATIC", L"", SS_CENTER, 0, 24, 792, 532, 42, 2);
-        add(L"STATIC", get_text(locale_, text::simulation_note, text_en::simulation_note), SS_CENTER, 0, 24, 842, 532, 22, 2);
-        add(L"STATIC", get_text(locale_, text::settings_note, text_en::settings_note), SS_CENTER, 0, 24, 872, 532, 22, 2);
+        add_l(L"STATIC", text::simulation_note, text_en::simulation_note, SS_CENTER, 0, 24, 842, 532, 22, 2);
+        add_l(L"STATIC", text::settings_note, text_en::settings_note, SS_CENTER, 0, 24, 872, 532, 22, 2);
+        fill_choice_combos();
         fonts_and_layout();
         show_kind();
     }
@@ -600,7 +530,7 @@ class Panel {
             ListView_InsertItem(list_, &item);
             auto due = record.state == OccurrenceState::Scheduled ? local_time_at(effective_due_utc_ms(record), locale_) : std::wstring(get_text(locale_, text::no_next, text_en::no_next));
             auto rule = record.kind == ScheduleKind::Duration ? std::to_wstring(record.minutes) + L" min" :
-                std::wstring(record.kind == ScheduleKind::Once ? text::once_rule : text::weekly_rule);
+                std::wstring(record.kind == ScheduleKind::Once ? get_text(locale_, text::once_rule, text_en::once_rule) : get_text(locale_, text::weekly_rule, text_en::weekly_rule));
             auto action_text = std::wstring(get_text(locale_, text::actions[static_cast<int>(record.action)], text_en::actions[static_cast<int>(record.action)]));
             if (record.force_shutdown) action_text += get_text(locale_, text::forced_tag, text_en::forced_tag);
             ListView_SetItemText(list_, row, 1, action_text.data());
