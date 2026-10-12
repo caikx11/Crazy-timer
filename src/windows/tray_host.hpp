@@ -32,24 +32,24 @@
 #include "windows_power_backend.hpp"
 
 namespace power_timer::windows {
-// True when the mod setting "real actions" is on. Simulation wording is then replaced.
-inline bool real_mode = false;
-struct RealText { const wchar_t* sim_pt; const wchar_t* pt; const wchar_t* en; };
-inline const RealText real_texts[] = {
-    {text::title, L"Crazy Time", L"Crazy Time"},
-    {text::simulation, L"AÇÕES REAIS", L"REAL ACTIONS"},
-    {text::simulation_note, L"ATENÇÃO: o computador será desligado, suspenso ou hibernado na hora.", L"WARNING: the computer will shut down, sleep or hibernate on schedule."},
-    {text::settings_note, L"AÇÃO REAL · Duração e ação são configuradas neste painel.", L"REAL ACTION · Duration and action are configured in this panel."},
-    {text::schedule, L"Agendar ação", L"Schedule action"},
-    {text::active, L"Ação agendada", L"Action scheduled"},
-    {text::completed, L"Ação solicitada", L"Action requested"},
-    {text::completed_detail, L"Solicitação enviada ao Windows.", L"Request sent to Windows."},
-    {text::cancelled_detail, L"Você pode programar uma nova ação.", L"You can schedule a new action."},
+// The mod performs real power actions. Only the local preview executable runs in
+// simulation mode, which swaps the wording below and uses SimulatedBackend.
+inline bool simulation_mode = false;
+struct SimulationText { const wchar_t* base_pt; const wchar_t* pt; const wchar_t* en; };
+inline const SimulationText simulation_texts[] = {
+    {text::title, L"Crazy Time · Simulação", L"Crazy Time · Simulation"},
+    {text::simulation_note, L"Seu computador não será desligado nesta versão.", L"Your computer will not be shut down in this version."},
+    {text::settings_note, L"SIMULAÇÃO · Duração e ação são configuradas neste painel.", L"SIMULATION · Duration and action are configured in this panel."},
+    {text::schedule, L"Iniciar simulação", L"Start simulation"},
+    {text::active, L"Simulação agendada", L"Simulation scheduled"},
+    {text::completed, L"Simulação concluída", L"Simulation completed"},
+    {text::completed_detail, L"Intenção registrada. Nenhuma ação real executada.", L"Intent recorded. No actual action executed."},
+    {text::cancelled_detail, L"Você pode programar uma nova simulação.", L"You can schedule a new simulation."},
 };
 inline const wchar_t* get_text(unsigned locale, const wchar_t* pt_br, const wchar_t* en) {
-    if (real_mode)
-        for (const auto& item : real_texts)
-            if (wcscmp(pt_br, item.sim_pt) == 0) return locale == 1 ? item.en : item.pt;
+    if (simulation_mode)
+        for (const auto& item : simulation_texts)
+            if (wcscmp(pt_br, item.base_pt) == 0) return locale == 1 ? item.en : item.pt;
     return locale == 1 ? en : pt_br;
 }
 inline constexpr wchar_t window_class[] = L"PowerTimer.Simulation.Panel";
@@ -147,7 +147,7 @@ class Panel {
     HICON icon_{};
     SimulatedBackend simulated_backend_;
     WindowsPowerBackend real_backend_;
-    PowerBackend& backend() { return real_mode ? static_cast<PowerBackend&>(real_backend_) : simulated_backend_; }
+    PowerBackend& backend() { return simulation_mode ? static_cast<PowerBackend&>(simulated_backend_) : real_backend_; }
     HWND force_{};
     std::vector<std::pair<HWND, std::pair<const wchar_t*, const wchar_t*>>> localized_;
     bool force_on_ = false;
@@ -366,7 +366,7 @@ class Panel {
     }
     void controls() {
         add_l(L"STATIC", text::brand, text_en::brand, 0, 0, 24, 20, 360, 36, 1);
-        add_l(L"STATIC", text::simulation, text_en::simulation, SS_RIGHT, 0, 454, 28, 102, 20, 2);
+        if (simulation_mode) add_l(L"STATIC", text::simulation, text_en::simulation, SS_RIGHT, 0, 454, 28, 102, 20, 2);
         add_l(L"STATIC", text::subtitle, text_en::subtitle, 0, 0, 24, 60, 360, 22);
         add_l(L"BUTTON", text::options, text_en::options, WS_TABSTOP | BS_OWNERDRAW, menu_id, 484, 58, 72, 28, 2);
 
@@ -1219,8 +1219,8 @@ inline void stop() {
     if (stop_event) { CloseHandle(stop_event); stop_event = nullptr; }
     initialized.store(false);
 }
-inline bool start(bool visible, void (*logger)(const wchar_t*) = nullptr, bool dedicated = false, bool real_actions = false) {
-    real_mode = real_actions;
+inline bool start(bool visible, void (*logger)(const wchar_t*) = nullptr, bool dedicated = false, bool simulate = false) {
+    simulation_mode = simulate;
     show_on_start = visible;
     dedicated_process = dedicated;
     user_requested_exit.store(false);

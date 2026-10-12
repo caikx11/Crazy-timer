@@ -2,8 +2,8 @@
 // @id              crazy-time
 // @name            Crazy Time
 // @name:pt-BR      Crazy Time
-// @description     Schedule shutdown, sleep or hibernate from a tray icon. Real actions are off by default (simulation).
-// @description:pt-BR Agende desligar, suspender ou hibernar pelo ícone da barra. Ações reais vêm desativadas (simulação).
+// @description     Schedule shutdown, sleep or hibernate from a tray icon, with warnings and weekly repeats.
+// @description:pt-BR Agende desligar, suspender ou hibernar pelo ícone da barra, com avisos e repetição semanal.
 // @version         0.6.0
 // @author          caikx11
 // @github          https://github.com/caikx11
@@ -20,11 +20,9 @@
 A minimalist scheduler for shutdown, sleep and hibernate, living in the
 notification area. Português abaixo.
 
-> **Real actions are OFF by default.** In that mode the mod only simulates:
-> it records the intent and shows a notification. Turn on **Perform real power
-> actions** in the mod settings (then disable and re-enable the mod) and the
-> computer will really shut down, sleep or hibernate when a schedule fires.
-> Save your work first, and try a short Sleep before relying on it.
+> **This mod really shuts down, sleeps or hibernates your computer** when a
+> schedule fires. Save your work first. A warning notification appears before
+> the action, and you can cancel or postpone an occurrence from the panel.
 
 > **Windows 10 is untested.** It was developed and tested on Windows 11 only.
 > It is expected to work on Windows 10 (version 1809 or newer for the dark
@@ -56,11 +54,9 @@ notification area. Português abaixo.
 
 Agendador minimalista de desligar, suspender e hibernar, na área de notificação.
 
-**Ações reais vêm DESLIGADAS.** Nesse modo o mod só simula: registra a
-intenção e mostra uma notificação. Ligue **Executar ações reais de energia**
-nas configurações do mod (e desative/reative o mod) para o computador
-realmente desligar, suspender ou hibernar quando um agendamento disparar.
-Salve seu trabalho antes e teste primeiro com uma suspensão curta.
+**Este mod realmente desliga, suspende ou hiberna o computador** quando um
+agendamento dispara. Salve seu trabalho antes. Uma notificação de aviso aparece
+antes da ação e você pode cancelar ou adiar a ocorrência pelo painel.
 
 **Windows 10 em teste.** Desenvolvido e testado apenas no Windows 11. Deve
 funcionar no Windows 10 (versão 1809 ou mais nova para o tema escuro dos
@@ -80,11 +76,6 @@ painel não interrompe a contagem. Desativar o mod encerra tudo.
   $name:pt-BR: Abrir painel ao iniciar
   $description: The tray icon remains available when the panel is hidden.
   $description:pt-BR: O ícone continua disponível quando o painel está oculto.
-- realActions: false
-  $name: Perform real power actions
-  $name:pt-BR: Executar ações reais de energia
-  $description: OFF = simulation only (nothing happens to the computer). ON = the computer really shuts down, sleeps or hibernates when a schedule fires. Takes effect after disabling and re-enabling the mod.
-  $description:pt-BR: DESLIGADO = apenas simulação (nada acontece com o computador). LIGADO = o computador realmente desliga, suspende ou hiberna quando um agendamento dispara. Vale depois de desativar e reativar o mod.
 - soundEnabled: false
   $name: Play notification sounds
   $name:pt-BR: Reproduzir sons de notificação
@@ -97,8 +88,7 @@ painel não interrompe a contagem. Desativar o mod encerra tudo.
 
 BOOL WhTool_ModInit() {
     return power_timer::windows::start(Wh_GetIntSetting(L"showOnStart") != 0,
-        [](const wchar_t* message) { Wh_Log(L"%s", message); }, true,
-        Wh_GetIntSetting(L"realActions") != 0);
+        [](const wchar_t* message) { Wh_Log(L"%s", message); }, true);
 }
 
 void WhTool_ModSettingsChanged() {
