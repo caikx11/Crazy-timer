@@ -5,7 +5,7 @@
 **Blocked by:** 04.
 
 **Status:** ready-for-agent
-**Execution:** open
+**Execution:** claimed
 
 **Histórias da especificação:** 26, 27.
 
