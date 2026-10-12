@@ -818,8 +818,11 @@ class Panel {
     void menu() {
         HMENU menu = CreatePopupMenu();
         if (!menu) return;
-        AppendMenuW(menu, MF_STRING, open_id, get_text(locale_, text::open, text_en::open));
-        AppendMenuW(menu, MF_STRING, settings_id, get_text(locale_, text::settings, text_en::settings));
+        // Open/Settings only make sense while the panel is hidden or minimised.
+        if (!IsWindowVisible(window_) || IsIconic(window_)) {
+            AppendMenuW(menu, MF_STRING, open_id, get_text(locale_, text::open, text_en::open));
+            AppendMenuW(menu, MF_STRING, settings_id, get_text(locale_, text::settings, text_en::settings));
+        }
         AppendMenuW(menu, MF_STRING, visibility_id, get_text(locale_, text::notification_settings, text_en::notification_settings));
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING | (book_.writable() && selected_record() && selected_record()->state == OccurrenceState::Scheduled ? MF_ENABLED : MF_GRAYED), postpone_id, get_text(locale_, text::postpone, text_en::postpone));
