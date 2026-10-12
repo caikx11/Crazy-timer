@@ -511,9 +511,29 @@ public:
         return commit(candidate);
     }
 
+    bool set_sound_enabled(bool enabled) {
+        if (snapshot_.sound_enabled == enabled) return true;
+        auto candidate = snapshot_;
+        candidate.sound_enabled = enabled;
+        return commit(candidate);
+    }
+
     // Getter for sound enabled
     bool get_sound_enabled() const {
         return snapshot_.sound_enabled;
+    }
+
+    // Getter for locale
+    unsigned get_locale() const {
+        return snapshot_.locale;
+    }
+
+    // Setter for locale
+    bool set_locale(unsigned locale) {
+        if (locale > 1) return false;
+        auto candidate = snapshot_;
+        candidate.locale = locale;
+        return commit(candidate);
     }
     ScheduleStorage& storage_;
     Calendar* calendar_ = nullptr;

@@ -13,7 +13,9 @@ inline std::string encode_snapshot(const ScheduleSnapshot& snapshot) {
     if (!valid_snapshot(snapshot)) return {};
     std::string data = "POWER_TIMER 4\n" + std::to_string(snapshot.next_id) + " " +
         std::to_string(snapshot.next_occurrence_id) + " " + std::to_string(snapshot.records.size()) + " " +
-        (snapshot.sound_enabled ? "1" : "0") + "\n";
+        (snapshot.sound_enabled ? "1" : "0") + "\n" +
+        std::to_string(snapshot.theme) + "\n" +
+        std::to_string(snapshot.locale) + "\n";
     for (const auto& record : snapshot.records) {
         data += std::to_string(record.id) + " " + std::to_string(record.occurrence_id) + " " +
             std::to_string(static_cast<unsigned>(record.action)) + " " + std::to_string(record.minutes) + " " +
@@ -64,6 +66,18 @@ inline std::optional<ScheduleSnapshot> decode_snapshot(std::string_view data) {
     if (!next_id || !next_occurrence || !count || *count > max_schedule_records) return std::nullopt;
     ScheduleSnapshot snapshot{*next_id, *next_occurrence, {}};
     if (sound_enabled) snapshot.sound_enabled = *sound_enabled == 1;
+    // Skip any leading newlines before the theme
+    while (!data.empty() && data[0] == '\n') {
+        data.remove_prefix(1);
+    }
+    if (v4) {
+        auto theme_val = number('\n');
+        if (!theme_val || *theme_val > 2) return std::nullopt;
+        snapshot.theme = *theme_val;
+        auto locale_val = number('\n');
+        if (!locale_val || *locale_val > 1) return std::nullopt;
+        snapshot.locale = *locale_val;
+    }
     for (std::uint64_t i = 0; i < *count; ++i) {
         const auto id = number(' '), occurrence = number(' '), action = number(' '), minutes = number(' '),
             due = number(' '), paused = number(' '), state = number(legacy ? '\n' : ' ');

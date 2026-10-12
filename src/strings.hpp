@@ -3,6 +3,10 @@
 namespace power_timer::text {
 // UI catalog boundary. Locale selection and English arrive in ticket 11.
 inline constexpr auto title = L"Power Timer · Simulação";
+inline constexpr auto theme_label = L"Tema";
+inline constexpr auto language_label = L"Idioma";
+inline constexpr auto portuguese = L"Português";
+inline constexpr auto english = L"English";
 inline constexpr auto brand = L"Power Timer";
 inline constexpr auto subtitle = L"Programe uma pausa.";
 inline constexpr auto simulation = L"SIMULAÇÃO";
@@ -64,7 +68,7 @@ inline constexpr auto theme_dark = L"Escuro";
 inline constexpr const wchar_t* theme_strings[] = {theme_auto, theme_light, theme_dark};
 inline constexpr auto notification_settings = L"Visibilidade do ícone no Windows";
 inline constexpr auto exit = L"Sair do Power Timer";
-inline constexpr auto settings_note = L"SIMULAÇÃO · Duração e ação são configuradas neste painel.\nTemas e idiomas chegam nas próximas etapas.";
+inline constexpr auto settings_note = L"SIMULAÇÃO · Duração e ação são configuradas neste painel.";
 inline constexpr auto settings_error = L"Não foi possível abrir as configurações do Windows.";
 inline constexpr auto tray_error = L"Ícone indisponível. Tentando reconectar à barra…";
 inline constexpr auto clock_empty = L"— — : — —";

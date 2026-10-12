@@ -25,8 +25,7 @@ int main(int argc, char** argv) {
     CHECK(actual.snapshot.records.size() == 1);
     CHECK(actual.snapshot.records.front().due_utc_ms == 901000);
     CHECK(actual.snapshot.records.front().action == Action::Sleep);
-    CHECK(encode_snapshot(expected) ==
-        "POWER_TIMER 4\n2 2 1 0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n");
+    CHECK(encode_snapshot(expected) == "POWER_TIMER 4\n2 2 1 0\n0\n0\n1 1 1 15 901000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n");
     {
         std::ifstream in(file, std::ios::binary);
         const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());

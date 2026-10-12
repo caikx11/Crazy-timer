@@ -49,24 +49,12 @@ BOOL WhTool_ModInit() {
 }
 
 void WhTool_ModSettingsChanged() {
+    if (HWND window = power_timer::windows::host_window.load())
+        PostMessageW(window, power_timer::windows::sound_message,
+            Wh_GetIntSetting(L"soundEnabled") != 0 ? 1 : 0, 0);
     if (Wh_GetIntSetting(L"showOnStart")) {
         if (HWND window = power_timer::windows::host_window.load())
             PostMessageW(window, power_timer::windows::show_message, 0, 0);
-    }
-
-    // Update sound_enabled setting in the schedule book
-    if (HWND window = power_timer::windows::host_window.load()) {
-        // Access the tray host to update the schedule book's sound_enabled setting
-        auto& tray_host = *reinterpret_cast<power_timer::windows::TrayHost*>(
-            GetWindowLongPtrW(window, GWLP_USERDATA));
-        if (tray_host.book_.writable()) {
-            auto candidate = tray_host.book_.snapshot_;
-            bool sound_enabled = Wh_GetIntSetting(L"soundEnabled") != 0;
-            if (candidate.sound_enabled != sound_enabled) {
-                candidate.sound_enabled = sound_enabled;
-                tray_host.book_.commit(candidate);
-            }
-        }
     }
 }
 

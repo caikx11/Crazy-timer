@@ -25,12 +25,17 @@
 #include "schedule_file.hpp"
 #include "local_calendar.hpp"
 #include "../strings.hpp"
+#include "../strings_en.hpp"
 
 namespace power_timer::windows {
+inline const wchar_t* get_text(unsigned locale, const wchar_t* pt_br, const wchar_t* en) {
+    return locale == 1 ? en : pt_br;
+}
 inline constexpr wchar_t window_class[] = L"PowerTimer.Simulation.Panel";
 inline constexpr UINT tray_message = WM_APP + 1;
 inline constexpr UINT show_message = WM_APP + 2;
 inline constexpr UINT stop_message = WM_APP + 3;
+inline constexpr UINT sound_message = WM_APP + 4; // wparam: 0 off, 1 on
 inline constexpr UINT_PTR timer_id = 1;
 inline HANDLE stop_event{}, ready_event{}, ui_thread{};
 inline std::atomic<HWND> host_window{};
@@ -43,7 +48,7 @@ inline void (*log_message)(const wchar_t*) = nullptr;
 enum ControlId { action_id = 100, duration_id, schedule_id, cancel_id,
                  preset_id = 110, open_id = 120, settings_id, visibility_id, exit_id, menu_id,
                  list_id = 130, edit_id, pause_id, erase_id, new_id,
-                 kind_id = 140, date_id, time_id, daily_id, weekday_id = 150, theme_id = 160 };
+                 kind_id = 140, date_id, time_id, daily_id, weekday_id = 150, theme_id = 160, locale_id = 170 };
 
 inline ClockSample clock_sample() {
     FILETIME file{};
@@ -70,9 +75,9 @@ inline void set_text(HWND window, const std::wstring& value) {
     if (old != value) SetWindowTextW(window, value.c_str());
 }
 
-inline std::wstring local_time_at(std::uint64_t utc_ms) {
+inline std::wstring local_time_at(std::uint64_t utc_ms, unsigned locale) {
     const auto civil = WindowsCalendar{}.local(utc_ms);
-    if (!civil) return text::unavailable_time;
+    if (!civil) return get_text(locale, text::unavailable_time, text_en::unavailable_time);
     SYSTEMTIME local{};
     local.wYear = static_cast<WORD>(civil->year); local.wMonth = static_cast<WORD>(civil->month);
     local.wDay = static_cast<WORD>(civil->day); local.wHour = static_cast<WORD>(civil->hour);
@@ -80,8 +85,8 @@ inline std::wstring local_time_at(std::uint64_t utc_ms) {
     wchar_t date[96]{}, time[96]{};
     if (!GetDateFormatEx(LOCALE_NAME_USER_DEFAULT, DATE_SHORTDATE, &local, nullptr, date, 96, nullptr) ||
         !GetTimeFormatEx(LOCALE_NAME_USER_DEFAULT, TIME_NOSECONDS, &local, nullptr, time, 96))
-        return text::unavailable_time;
-    return std::wstring(date) + text::separator + time;
+        return get_text(locale, text::unavailable_time, text_en::unavailable_time);
+    return std::wstring(date) + get_text(locale, text::separator, text_en::separator) + time;
 }
 
 inline HICON make_icon() {
@@ -119,7 +124,7 @@ class Panel {
     HFONT fonts_[4]{};
     HBRUSH background_{};
     HICON icon_{};
-    HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{}, theme_{};
+    HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{}, theme_combo_{}, locale_combo_{};
     FileScheduleStorage storage_;
     WindowsCalendar calendar_;
     ScheduleBook book_;
@@ -140,7 +145,8 @@ class Panel {
     std::uint64_t last_tray_try_{};
     COLORREF bg_ = RGB(247, 249, 252), ink_ = RGB(24, 35, 53), accent_ = RGB(0, 120, 212);
     bool high_contrast_ = false;
-    unsigned theme_ = 0; // 0=automatic, 1=light, 2=dark
+    unsigned theme_value_ = 0; // 0=automatic, 1=light, 2=dark
+    unsigned locale_ = 0; // 0=pt-BR, 1=English
 
     int px(int value) const { return MulDiv(value, static_cast<int>(dpi_), 96); }
     HWND add(const wchar_t* type, const wchar_t* label, DWORD style, int id,
@@ -152,6 +158,136 @@ class Panel {
         items_.push_back({control, x, y, width, height, font});
         return control;
     }
+    void refresh_locale_text() {
+        if (!window_) return;
+
+        // Update window title
+        SetWindowTextW(window_, get_text(locale_, text::title, text_en::title));
+
+        // Update static text controls
+        SetWindowTextW(GetDlgItem(window_, 0), get_text(locale_, text::brand, text_en::brand)); // Brand
+        SetWindowTextW(GetDlgItem(window_, 1), get_text(locale_, text::simulation, text_en::simulation)); // Simulation
+        SetWindowTextW(GetDlgItem(window_, 2), get_text(locale_, text::subtitle, text_en::subtitle)); // Subtitle
+        SetWindowTextW(GetDlgItem(window_, 3), get_text(locale_, text::options, text_en::options)); // Options button
+        SetWindowTextW(GetDlgItem(window_, 4), get_text(locale_, text::theme_label, text_en::theme_label)); // Tema label
+        SetWindowTextW(GetDlgItem(window_, 5), get_text(locale_, text::language_label, text_en::language_label)); // Idioma label
+        SetWindowTextW(GetDlgItem(window_, 6), get_text(locale_, text::action_label, text_en::action_label)); // Action label
+        SetWindowTextW(GetDlgItem(window_, 7), get_text(locale_, text::kind_label, text_en::kind_label)); // Kind label
+        SetWindowTextW(GetDlgItem(window_, 8), get_text(locale_, text::duration_label, text_en::duration_label)); // Duration label
+        SetWindowTextW(GetDlgItem(window_, 9), get_text(locale_, text::date_label, text_en::date_label)); // Date label
+        SetWindowTextW(GetDlgItem(window_, 10), get_text(locale_, text::time_label, text_en::time_label)); // Time label
+        SetWindowTextW(GetDlgItem(window_, 11), get_text(locale_, text::weekly_label, text_en::weekly_label)); // Weekly label
+        SetWindowTextW(GetDlgItem(window_, 12), get_text(locale_, text::daily, text_en::daily)); // Daily button
+        SetWindowTextW(GetDlgItem(window_, 13), get_text(locale_, text::duration_hint, text_en::duration_hint)); // Duration hint
+
+        // Update buttons that depend on state
+        SetWindowTextW(GetDlgItem(window_, 15), editing_id_ ? get_text(locale_, text::save_schedule, text_en::save_schedule) : get_text(locale_, text::add_schedule, text_en::add_schedule)); // Add schedule
+        SetWindowTextW(GetDlgItem(window_, 16), get_text(locale_, text::new_schedule, text_en::new_schedule)); // New schedule
+        SetWindowTextW(GetDlgItem(window_, 17), get_text(locale_, text::schedules, text_en::schedules)); // Schedules label
+        SetWindowTextW(GetDlgItem(window_, 18), get_text(locale_, text::edit, text_en::edit)); // Edit button
+
+        // Update pause button based on state
+        if (selected_record() && selected_record()->paused) {
+            SetWindowTextW(GetDlgItem(window_, 19), get_text(locale_, text::resume, text_en::resume));
+        } else {
+            SetWindowTextW(GetDlgItem(window_, 19), get_text(locale_, text::pause, text_en::pause));
+        }
+
+        SetWindowTextW(GetDlgItem(window_, 20), get_text(locale_, text::erase, text_en::erase)); // Erase button
+        SetWindowTextW(GetDlgItem(window_, 21), get_text(locale_, text::cancel, text_en::cancel)); // Cancel button
+
+        // Update status and other dynamic text (will be updated by refresh())
+        if (selected_record()) {
+            SetWindowTextW(GetDlgItem(window_, 22), state_label(*selected_record()));
+        } else {
+            SetWindowTextW(GetDlgItem(window_, 22), get_text(locale_, text::idle, text_en::idle));
+        }
+
+        // Update locale combo box items and selection
+        if (locale_combo_) {
+            SendMessageW(locale_combo_, CB_RESETCONTENT, 0, 0);
+            SendMessageW(locale_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::portuguese, text_en::portuguese)));
+            SendMessageW(locale_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::english, text_en::english)));
+            SendMessageW(locale_combo_, CB_SETCURSEL, static_cast<WPARAM>(locale_), 0);
+        }
+
+        // Update theme combo box items and selection
+        if (theme_combo_) {
+            SendMessageW(theme_combo_, CB_RESETCONTENT, 0, 0);
+            for (const auto* theme : text::theme_strings) SendMessageW(theme_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(theme));
+            SendMessageW(theme_combo_, CB_SETCURSEL, static_cast<WPARAM>(theme_value_), 0);
+        }
+
+        // Update action combo box
+        if (action_) {
+            SendMessageW(action_, CB_RESETCONTENT, 0, 0);
+            for (const auto* action : text::actions) SendMessageW(action_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(action));
+            if (selected_record()) SendMessageW(action_, CB_SETCURSEL, static_cast<WPARAM>(selected_record()->action), 0);
+            else SendMessageW(action_, CB_SETCURSEL, 0, 0);
+        }
+
+        // Update kind combo box
+        if (kind_) {
+            SendMessageW(kind_, CB_RESETCONTENT, 0, 0);
+            for (const auto* kind : text::kinds) SendMessageW(kind_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(kind));
+            if (selected_record()) SendMessageW(kind_, CB_SETCURSEL, static_cast<WPARAM>(selected_record()->kind), 0);
+            else SendMessageW(kind_, CB_SETCURSEL, 0, 0);
+        }
+
+        // Update preset buttons
+        for (int i = 0; i < static_cast<int>(std::size(text::presets)); ++i) {
+            HWND preset = GetDlgItem(window_, preset_id + i);
+            if (preset) {
+                SetWindowTextW(preset, text::presets[i].label);
+            }
+        }
+
+        // Update day buttons
+        for (int i = 0; i < 7; ++i) {
+            HWND day = GetDlgItem(window_, weekday_id + i);
+            if (day) {
+                SetWindowTextW(day, text::weekdays[i]);
+            }
+        }
+
+        // Update list column headers
+        if (list_) {
+            const wchar_t* labels[] = {get_text(locale_, text::id_column, text_en::id_column), get_text(locale_, text::action_column, text_en::action_column), get_text(locale_, text::due_column, text_en::due_column), get_text(locale_, text::state_column, text_en::state_column), get_text(locale_, text::rule_column, text_en::rule_column)};
+            const int widths[] = {40, 80, 172, 130, 80};
+            for (int i = 0; i < 5; ++i) {
+                LVCOLUMNW column{}; column.mask = LVCF_TEXT | LVCF_WIDTH;
+                column.pszText = const_cast<wchar_t*>(labels[i]); column.cx = px(widths[i]);
+                ListView_SetColumn(list_, i, &column);
+            }
+        }
+
+        // Update other buttons
+        if (open_id) {
+            HWND open_btn = GetDlgItem(window_, open_id);
+            if (open_btn) set_text(open_btn, get_text(locale_, text::open, text_en::open));
+        }
+        if (settings_id) {
+            HWND settings_btn = GetDlgItem(window_, settings_id);
+            if (settings_btn) set_text(settings_btn, get_text(locale_, text::settings, text_en::settings));
+        }
+        if (visibility_id) {
+            HWND visibility_btn = GetDlgItem(window_, visibility_id);
+            if (visibility_btn) set_text(visibility_btn, get_text(locale_, text::notification_settings, text_en::notification_settings));
+        }
+        if (menu_id) {
+            HWND menu_btn = GetDlgItem(window_, menu_id);
+            if (menu_btn) set_text(menu_btn, get_text(locale_, text::options, text_en::options));
+        }
+        if (exit_id) {
+            HWND exit_btn = GetDlgItem(window_, exit_id);
+            if (exit_btn) set_text(exit_btn, get_text(locale_, text::exit, text_en::exit));
+        }
+
+        // Refresh dynamic content
+        preview();
+        refresh();
+    }
+
     void fonts_and_layout() {
         for (auto& font : fonts_) { if (font) DeleteObject(font); font = nullptr; }
         const int sizes[] = {14, 25, 11, 40};
@@ -162,6 +298,10 @@ class Panel {
         for (const auto& item : items_) {
             MoveWindow(item.handle, px(item.x), px(item.y), px(item.width), px(item.height), TRUE);
             SendMessageW(item.handle, WM_SETFONT, reinterpret_cast<WPARAM>(fonts_[item.font]), TRUE);
+        }
+        if (list_) {
+            const int widths[] = {40, 80, 172, 130, 80};
+            for (int i = 0; i < 5; ++i) ListView_SetColumnWidth(list_, i, px(widths[i]));
         }
     }
     // Get system theme preference: 0=dark, 1=light
@@ -205,7 +345,7 @@ class Panel {
             accent_ = GetSysColor(COLOR_HIGHLIGHT);
         } else {
             bool use_dark = false;
-            switch (theme_) {
+            switch (theme_value_) {
                 case 0: // automatic
                     use_dark = get_system_dark_theme();
                     break;
@@ -239,78 +379,91 @@ class Panel {
         }
     }
     void controls() {
-        add(L"STATIC", text::brand, 0, 0, 24, 20, 360, 36, 1);
-        add(L"STATIC", text::simulation, SS_RIGHT, 0, 454, 28, 102, 20, 2);
-        add(L"STATIC", text::subtitle, 0, 0, 24, 60, 360, 22);
-        add(L"BUTTON", text::options, WS_TABSTOP | BS_OWNERDRAW, menu_id, 484, 58, 72, 28, 2);
-        add(L"STATIC", text::action_label, 0, 0, 24, 96, 254, 22);
+        add(L"STATIC", get_text(locale_, text::brand, text_en::brand), 0, 0, 24, 20, 360, 36, 1);
+        add(L"STATIC", get_text(locale_, text::simulation, text_en::simulation), SS_RIGHT, 0, 454, 28, 102, 20, 2);
+        add(L"STATIC", get_text(locale_, text::subtitle, text_en::subtitle), 0, 0, 24, 60, 360, 22);
+        add(L"BUTTON", get_text(locale_, text::options, text_en::options), WS_TABSTOP | BS_OWNERDRAW, menu_id, 484, 58, 72, 28, 2);
+
+        // Theme selection near other combos for logical tab order
+        add(L"STATIC", get_text(locale_, text::theme_label, text_en::theme_label), 0, 0, 24, 100, 254, 22);
+        theme_combo_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                     theme_id, 24, 125, 254, 180);
+        for (const auto* theme : text::theme_strings) SendMessageW(theme_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(theme));
+        SendMessageW(theme_combo_, CB_SETCURSEL, static_cast<WPARAM>(theme_value_), 0);
+
+        // Language selection
+        add(L"STATIC", get_text(locale_, text::language_label, text_en::language_label), 0, 0, 24, 170, 254, 22);
+        locale_combo_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                     locale_id, 24, 195, 254, 180);
+        SendMessageW(locale_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::portuguese, text_en::portuguese)));
+
+        // Kind selection: right column, same row as language
+        add(L"STATIC", get_text(locale_, text::kind_label, text_en::kind_label), 0, 0, 304, 170, 252, 22);
+        kind_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                    kind_id, 304, 195, 252, 160);
+        SendMessageW(locale_combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(get_text(locale_, text::english, text_en::english)));
+        SendMessageW(locale_combo_, CB_SETCURSEL, static_cast<WPARAM>(book_.get_locale()), 0);
+
+        add(L"STATIC", get_text(locale_, text::action_label, text_en::action_label), 0, 0, 304, 100, 252, 22);
         action_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
-                      action_id, 24, 121, 254, 180);
+                      action_id, 304, 125, 252, 180);
         for (const auto* action : text::actions) SendMessageW(action_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(action));
         SendMessageW(action_, CB_SETCURSEL, 0, 0);
-        add(L"STATIC", text::kind_label, 0, 0, 304, 96, 252, 22);
-        kind_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
-                    kind_id, 304, 121, 252, 160);
         for (const auto* kind : text::kinds) SendMessageW(kind_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(kind));
         SendMessageW(kind_, CB_SETCURSEL, 0, 0);
-        duration_controls_.push_back(add(L"STATIC", text::duration_label, 0, 0, 24, 166, 270, 22));
+        duration_controls_.push_back(add(L"STATIC", get_text(locale_, text::duration_label, text_en::duration_label), 0, 0, 24, 240, 254, 22));
         duration_ = add(L"EDIT", L"30", WS_TABSTOP | ES_AUTOHSCROLL, duration_id,
-                        24, 190, 254, 34, 0, WS_EX_CLIENTEDGE);
+                        24, 265, 254, 34, 0, WS_EX_CLIENTEDGE);
         duration_controls_.push_back(duration_);
         SendMessageW(duration_, EM_SETLIMITTEXT, 32, 0);
-        duration_controls_.push_back(add(L"STATIC", text::duration_hint, 0, 0, 304, 196, 252, 22, 2));
+        duration_controls_.push_back(add(L"STATIC", get_text(locale_, text::duration_hint, text_en::duration_hint), 0, 0, 304, 272, 252, 22, 2));
         for (int i = 0; i < static_cast<int>(std::size(text::presets)); ++i)
             duration_controls_.push_back(add(L"BUTTON", text::presets[i].label, WS_TABSTOP | BS_OWNERDRAW, preset_id + i,
-                24 + 136 * i, 238, 124, 32, 2));
-        once_controls_.push_back(add(L"STATIC", text::date_label, 0, 0, 24, 166, 254, 22));
-        date_ = add(DATETIMEPICK_CLASSW, L"", WS_TABSTOP | DTS_SHORTDATEFORMAT, date_id, 24, 190, 254, 34);
+                24 + 136 * i, 315, 124, 32, 2));
+        once_controls_.push_back(add(L"STATIC", get_text(locale_, text::date_label, text_en::date_label), 0, 0, 24, 240, 254, 22));
+        date_ = add(DATETIMEPICK_CLASSW, L"", WS_TABSTOP | DTS_SHORTDATEFORMAT, date_id, 24, 265, 254, 34);
         SendMessageW(date_, DTM_SETFORMATW, 0, reinterpret_cast<LPARAM>(L"dd/MM/yyyy"));
         SYSTEMTIME range[2]{}; range[0].wYear = 1970; range[0].wMonth = 1; range[0].wDay = 1;
         range[1].wYear = 9999; range[1].wMonth = 12; range[1].wDay = 31;
         DateTime_SetRange(date_, GDTR_MIN | GDTR_MAX, range);
         once_controls_.push_back(date_);
-        calendar_controls_.push_back(add(L"STATIC", text::time_label, 0, 0, 304, 166, 252, 22));
-        time_ = add(DATETIMEPICK_CLASSW, L"", WS_TABSTOP | DTS_TIMEFORMAT | DTS_UPDOWN, time_id, 304, 190, 252, 34);
+        calendar_controls_.push_back(add(L"STATIC", get_text(locale_, text::time_label, text_en::time_label), 0, 0, 304, 240, 252, 22));
+        time_ = add(DATETIMEPICK_CLASSW, L"", WS_TABSTOP | DTS_TIMEFORMAT | DTS_UPDOWN, time_id, 304, 265, 252, 34);
         SendMessageW(time_, DTM_SETFORMATW, 0, reinterpret_cast<LPARAM>(L"HH:mm"));
         calendar_controls_.push_back(time_);
-        weekly_controls_.push_back(add(L"STATIC", text::weekly_label, 0, 0, 24, 166, 270, 22, 2));
-        weekly_controls_.push_back(add(L"BUTTON", text::daily, WS_TABSTOP | BS_OWNERDRAW, daily_id, 24, 190, 254, 34, 2));
+        weekly_controls_.push_back(add(L"STATIC", get_text(locale_, text::weekly_label, text_en::weekly_label), 0, 0, 24, 240, 254, 22, 2));
+        weekly_controls_.push_back(add(L"BUTTON", get_text(locale_, text::daily, text_en::daily), WS_TABSTOP | BS_OWNERDRAW, daily_id, 24, 265, 254, 34, 2));
         for (int i = 0; i < 7; ++i) {
             days_[i] = add(L"BUTTON", text::weekdays[i], WS_TABSTOP | BS_AUTOCHECKBOX, weekday_id + i,
-                           24 + 76 * i, 238, 74, 30, 2);
+                           24 + 76 * i, 315, 74, 30, 2);
             SendMessageW(days_[i], BM_SETCHECK, BST_CHECKED, 0);
             weekly_controls_.push_back(days_[i]);
         }
-        preview_ = add(L"STATIC", L"", 0, 0, 24, 280, 532, 30, 2);
-        start_ = add(L"BUTTON", text::add_schedule, WS_TABSTOP | BS_OWNERDRAW, schedule_id,
-                     24, 314, 360, 36);
-        add(L"BUTTON", text::new_schedule, WS_TABSTOP | BS_OWNERDRAW, new_id, 400, 314, 156, 36);
-        add(L"STATIC", text::schedules, 0, 0, 24, 364, 532, 22);
+        preview_ = add(L"STATIC", L"", 0, 0, 24, 360, 532, 30, 2);
+        start_ = add(L"BUTTON", get_text(locale_, text::add_schedule, text_en::add_schedule), WS_TABSTOP | BS_OWNERDRAW, schedule_id,
+                     24, 400, 344, 36);
+        add(L"BUTTON", get_text(locale_, text::new_schedule, text_en::new_schedule), WS_TABSTOP | BS_OWNERDRAW, new_id, 380, 400, 176, 36);
+        add(L"STATIC", get_text(locale_, text::schedules, text_en::schedules), 0, 0, 24, 450, 532, 22);
         list_ = add(WC_LISTVIEWW, L"", WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
-                    list_id, 24, 390, 532, 130, 2, WS_EX_CLIENTEDGE);
+                    list_id, 24, 476, 532, 120, 2, WS_EX_CLIENTEDGE);
         ListView_SetExtendedListViewStyle(list_, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-        const wchar_t* labels[] = {text::id_column, text::action_column, text::due_column, text::state_column, text::rule_column};
+        const wchar_t* labels[] = {get_text(locale_, text::id_column, text_en::id_column), get_text(locale_, text::action_column, text_en::action_column), get_text(locale_, text::due_column, text_en::due_column), get_text(locale_, text::state_column, text_en::state_column), get_text(locale_, text::rule_column, text_en::rule_column)};
         const int widths[] = {40, 80, 172, 130, 80};
         for (int i = 0; i < 5; ++i) {
             LVCOLUMNW column{}; column.mask = LVCF_TEXT | LVCF_WIDTH;
             column.pszText = const_cast<wchar_t*>(labels[i]); column.cx = px(widths[i]);
             ListView_InsertColumn(list_, i, &column);
         }
-        edit_ = add(L"BUTTON", text::edit, WS_TABSTOP | BS_OWNERDRAW, edit_id, 24, 534, 124, 34, 2);
-        pause_ = add(L"BUTTON", text::pause, WS_TABSTOP | BS_OWNERDRAW, pause_id, 160, 534, 124, 34, 2);
-        erase_ = add(L"BUTTON", text::erase, WS_TABSTOP | BS_OWNERDRAW, erase_id, 296, 534, 124, 34, 2);
-        cancel_ = add(L"BUTTON", text::cancel, WS_TABSTOP | BS_OWNERDRAW, cancel_id, 432, 534, 124, 34, 2);
-        status_ = add(L"STATIC", text::idle, SS_CENTER, 0, 24, 580, 532, 24);
-        countdown_ = add(L"STATIC", text::clock_empty, SS_CENTER, 0, 24, 608, 532, 48, 3);
-        detail_ = add(L"STATIC", text::idle_detail, SS_CENTER, 0, 24, 660, 532, 40, 2);
-        error_ = add(L"STATIC", L"", SS_CENTER, 0, 24, 710, 532, 42, 2);
-        add(L"STATIC", text::simulation_note, SS_CENTER, 0, 24, 766, 532, 22, 2);
-        add(L"STATIC", text::settings_note, SS_CENTER, 0, 24, 804, 532, 22, 2);
-        add(L"STATIC", L"Tema", 0, 0, 24, 828, 254, 22);
-        theme_ = add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
-                    theme_id, 24, 852, 254, 180);
-        for (const auto* theme : text::theme_strings) SendMessageW(theme_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(theme));
-        SendMessageW(theme_, CB_SETCURSEL, theme_, 0);
+        edit_ = add(L"BUTTON", get_text(locale_, text::edit, text_en::edit), WS_TABSTOP | BS_OWNERDRAW, edit_id, 24, 608, 124, 36, 2);
+        pause_ = add(L"BUTTON", get_text(locale_, text::pause, text_en::pause), WS_TABSTOP | BS_OWNERDRAW, pause_id, 160, 608, 124, 36, 2);
+        erase_ = add(L"BUTTON", get_text(locale_, text::erase, text_en::erase), WS_TABSTOP | BS_OWNERDRAW, erase_id, 296, 608, 124, 36, 2);
+        cancel_ = add(L"BUTTON", get_text(locale_, text::cancel, text_en::cancel), WS_TABSTOP | BS_OWNERDRAW, cancel_id, 432, 608, 124, 36, 2);
+        status_ = add(L"STATIC", get_text(locale_, text::idle, text_en::idle), SS_CENTER, 0, 24, 660, 532, 24);
+        countdown_ = add(L"STATIC", get_text(locale_, text::clock_empty, text_en::clock_empty), SS_CENTER, 0, 24, 688, 532, 56, 3);
+        detail_ = add(L"STATIC", get_text(locale_, text::idle_detail, text_en::idle_detail), SS_CENTER, 0, 24, 748, 532, 40, 2);
+        error_ = add(L"STATIC", L"", SS_CENTER, 0, 24, 792, 532, 42, 2);
+        add(L"STATIC", get_text(locale_, text::simulation_note, text_en::simulation_note), SS_CENTER, 0, 24, 842, 532, 22, 2);
+        add(L"STATIC", get_text(locale_, text::settings_note, text_en::settings_note), SS_CENTER, 0, 24, 872, 532, 22, 2);
         fonts_and_layout();
         show_kind();
     }
@@ -358,11 +511,11 @@ class Panel {
         else if (kind == ScheduleKind::Weekly) due = book_.preview_weekly(selected_days(), civil.hour * 60 + civil.minute, now);
         const auto action = static_cast<int>(selected_action());
         if (!due || action < 0 || action > 2) {
-            set_text(preview_, kind == ScheduleKind::Duration ? text::invalid_preview : text::calendar_preview_error);
+            set_text(preview_, kind == ScheduleKind::Duration ? get_text(locale_, text::invalid_preview, text_en::invalid_preview) : get_text(locale_, text::calendar_preview_error, text_en::calendar_preview_error));
             return;
         }
-        set_text(preview_, std::wstring(text::preview_prefix) + text::actions[action] +
-            text::separator + local_time_at(*due));
+        set_text(preview_, std::wstring(get_text(locale_, text::preview_prefix, text_en::preview_prefix)) + get_text(locale_, text::actions[action], text_en::actions[action]) +
+            get_text(locale_, text::separator, text_en::separator) + local_time_at(*due, locale_));
     }
     void notify(const wchar_t* title, const wchar_t* body) {
         if (!tray_added_) return;
@@ -384,24 +537,24 @@ class Panel {
         for (const auto& record : book_.list()) if (record.id == selected_id_) return &record;
         return nullptr;
     }
-    static const wchar_t* state_label(const ScheduleRecord& record) {
-        if (record.conflict_with) return text::state_conflict;
-        if (record.state == OccurrenceState::Scheduled && record.paused) return text::state_paused;
+    const wchar_t* state_label(const ScheduleRecord& record) {
+        if (record.conflict_with) return get_text(locale_, text::state_conflict, text_en::state_conflict);
+        if (record.state == OccurrenceState::Scheduled && record.paused) return get_text(locale_, text::state_paused, text_en::state_paused);
         switch (record.state) {
-            case OccurrenceState::Scheduled: return text::state_scheduled;
-            case OccurrenceState::Cancelled: return text::state_cancelled;
-            case OccurrenceState::Expired: return text::state_expired;
-            case OccurrenceState::Uncertain: return text::state_uncertain;
-            case OccurrenceState::Completed: return text::state_completed;
+            case OccurrenceState::Scheduled: return get_text(locale_, text::state_scheduled, text_en::state_scheduled);
+            case OccurrenceState::Cancelled: return get_text(locale_, text::state_cancelled, text_en::state_cancelled);
+            case OccurrenceState::Expired: return get_text(locale_, text::state_expired, text_en::state_expired);
+            case OccurrenceState::Uncertain: return get_text(locale_, text::state_uncertain, text_en::state_uncertain);
+            case OccurrenceState::Completed: return get_text(locale_, text::state_completed, text_en::state_completed);
         }
-        return text::state_uncertain;
+        return get_text(locale_, text::state_uncertain, text_en::state_uncertain);
     }
     void show_error() {
         if (book_.error() == BookError::Conflict) {
-            std::wstring message = std::wstring(text::conflict_error) + text::schedule_number + std::to_wstring(book_.conflicting_id());
+            std::wstring message = std::wstring(get_text(locale_, text::conflict_error, text_en::conflict_error)) + text::schedule_number + std::to_wstring(book_.conflicting_id());
             for (const auto& record : book_.list()) if (record.id == book_.conflicting_id()) {
-                message += std::wstring(text::separator) + text::actions[static_cast<int>(record.action)] +
-                    text::separator + local_time_at(record.due_utc_ms);
+                message += std::wstring(get_text(locale_, text::separator, text_en::separator)) + get_text(locale_, text::actions[static_cast<int>(record.action)], text_en::actions[static_cast<int>(record.action)]) +
+                    std::wstring(get_text(locale_, text::separator, text_en::separator)) + local_time_at(record.due_utc_ms, locale_);
                 break;
             }
             set_text(error_, message);
@@ -409,12 +562,12 @@ class Panel {
         }
         const wchar_t* message = L"";
         switch (book_.error()) {
-            case BookError::InvalidInput: message = selected_kind() == ScheduleKind::Duration ? text::record_input_error : text::calendar_input_error; break;
-            case BookError::Calendar: message = text::calendar_error; break;
-            case BookError::NotFound: message = text::missing_record; break;
-            case BookError::Storage: message = text::storage_error; break;
-            case BookError::InvalidData: message = text::invalid_data; break;
-            case BookError::NotReady: message = text::not_ready; break;
+            case BookError::InvalidInput: message = selected_kind() == ScheduleKind::Duration ? get_text(locale_, text::record_input_error, text_en::record_input_error) : get_text(locale_, text::calendar_input_error, text_en::calendar_input_error); break;
+            case BookError::Calendar: message = get_text(locale_, text::calendar_error, text_en::calendar_error); break;
+            case BookError::NotFound: message = get_text(locale_, text::missing_record, text_en::missing_record); break;
+            case BookError::Storage: message = get_text(locale_, text::storage_error, text_en::storage_error); break;
+            case BookError::InvalidData: message = get_text(locale_, text::invalid_data, text_en::invalid_data); break;
+            case BookError::NotReady: message = get_text(locale_, text::not_ready, text_en::not_ready); break;
             case BookError::None: break;
             case BookError::Conflict: break;
         }
@@ -441,10 +594,10 @@ class Panel {
             auto number = std::to_wstring(record.id);
             item.pszText = number.data();
             ListView_InsertItem(list_, &item);
-            auto due = record.state == OccurrenceState::Scheduled ? local_time_at(record.due_utc_ms) : std::wstring(text::no_next);
+            auto due = record.state == OccurrenceState::Scheduled ? local_time_at(record.due_utc_ms, locale_) : std::wstring(get_text(locale_, text::no_next, text_en::no_next));
             auto rule = record.kind == ScheduleKind::Duration ? std::to_wstring(record.minutes) + L" min" :
                 std::wstring(record.kind == ScheduleKind::Once ? text::once_rule : text::weekly_rule);
-            ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(text::actions[static_cast<int>(record.action)]));
+            ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(get_text(locale_, text::actions[static_cast<int>(record.action)], text_en::actions[static_cast<int>(record.action)])));
             ListView_SetItemText(list_, row, 2, due.data());
             ListView_SetItemText(list_, row, 3, const_cast<wchar_t*>(state_label(record)));
             ListView_SetItemText(list_, row, 4, rule.data());
@@ -458,11 +611,11 @@ class Panel {
         if (!countdown_) return;
         const auto now = clock_sample();
         for (const auto& delivery : book_.tick(now)) {
-            if (log_message) log_message(text::completed_detail);
+            if (log_message) log_message(get_text(locale_, text::completed_detail, text_en::completed_detail));
             const bool recorded = book_.complete(delivery);
             if (!recorded) show_error();
-            notify(recorded ? text::completed : text::state_uncertain,
-                recorded ? text::completed_detail : text::uncertain_detail);
+            notify(recorded ? get_text(locale_, text::completed, text_en::completed) : get_text(locale_, text::state_uncertain, text_en::state_uncertain),
+                recorded ? get_text(locale_, text::completed_detail, text_en::completed_detail) : get_text(locale_, text::uncertain_detail, text_en::uncertain_detail));
             if (!recorded) break;
         }
         // Multi-threshold warnings: 30min, 15min, 10min, 5min, 1min (existing warning_ms)
@@ -482,36 +635,50 @@ class Panel {
             const auto remaining = book_.remaining_ms(record.id, now);
             if (remaining == 0) continue; // Skip expired
 
-            // Check each threshold from largest to smallest
-            for (const auto& [threshold_ms, threshold_index] : thresholds) {
-                if (remaining <= threshold_ms) {
-                    // Create unique key for this occurrence + threshold: occurrence_id * 10 + threshold_index
+            // Thresholds already crossed the first time this occurrence is seen (e.g. a
+            // 5 minute timer) were never "reached" by the countdown: mark them without notifying.
+            const auto seen_key = record.occurrence_id * 10 + 9;
+            const bool first_sight = warned_thresholds_.insert(seen_key).second;
+            // Only the tightest crossed threshold applies; wider ones are marked silently.
+            int applicable = -1;
+            for (int i = 0; i < static_cast<int>(thresholds.size()); ++i)
+                if (remaining <= thresholds[i].first) applicable = i;
+            if (applicable < 0) continue;
+            for (int i = 0; i < applicable; ++i)
+                warned_thresholds_.insert(record.occurrence_id * 10 + thresholds[i].second);
+            if (first_sight) {
+                warned_thresholds_.insert(record.occurrence_id * 10 + thresholds[applicable].second);
+                continue;
+            }
+            {
+                const auto threshold_index = thresholds[applicable].second;
+                {
                     const auto warn_key = record.occurrence_id * 10 + threshold_index;
                     if (warned_thresholds_.insert(warn_key).second) {
                         // Select appropriate message based on threshold
-                        const wchar_t* title = text::warning;
-                        const wchar_t* body = text::countdown_notification; // fallback
+                        const wchar_t* title = get_text(locale_, text::warning, text_en::warning);
+                        const wchar_t* body = get_text(locale_, text::countdown_notification, text_en::countdown_notification); // fallback
 
                         switch (threshold_index) {
                             case 0: // 30 minutes
-                                title = text::warning_30min;
-                                body = text::warning_30min_detail;
+                                title = get_text(locale_, text::warning_30min, text_en::warning_30min);
+                                body = get_text(locale_, text::warning_30min_detail, text_en::warning_30min_detail);
                                 break;
                             case 1: // 15 minutes
-                                title = text::warning_15min;
-                                body = text::warning_15min_detail;
+                                title = get_text(locale_, text::warning_15min, text_en::warning_15min);
+                                body = get_text(locale_, text::warning_15min_detail, text_en::warning_15min_detail);
                                 break;
                             case 2: // 10 minutes
-                                title = text::warning_10min;
-                                body = text::warning_10min_detail;
+                                title = get_text(locale_, text::warning_10min, text_en::warning_10min);
+                                body = get_text(locale_, text::warning_10min_detail, text_en::warning_10min_detail);
                                 break;
                             case 3: // 5 minutes
-                                title = text::warning_5min;
-                                body = text::warning_5min_detail;
+                                title = get_text(locale_, text::warning_5min, text_en::warning_5min);
+                                body = get_text(locale_, text::warning_5min_detail, text_en::warning_5min_detail);
                                 break;
                             case 4: // 1 minute (existing)
-                                title = text::warning;
-                                body = text::countdown_notification;
+                                title = get_text(locale_, text::warning, text_en::warning);
+                                body = get_text(locale_, text::countdown_notification, text_en::countdown_notification);
                                 break;
                         }
 
@@ -520,7 +687,6 @@ class Panel {
                         if (threshold_index == 4) { // 1-minute warning
                             show(false);
                         }
-                        break; // Only fire the highest threshold that matches
                     }
                 }
             }
@@ -530,7 +696,7 @@ class Panel {
             conflicts += std::to_wstring(record.id) + L":" + std::to_wstring(record.conflict_with) + L";";
         if (conflicts != conflict_signature_) {
             conflict_signature_ = conflicts;
-            if (!conflicts.empty()) notify(text::state_conflict, text::conflict_notification);
+            if (!conflicts.empty()) notify(get_text(locale_, text::state_conflict, text_en::state_conflict), get_text(locale_, text::conflict_notification, text_en::conflict_notification));
         }
         sync_list();
         const auto* record = selected_record();
@@ -541,8 +707,8 @@ class Panel {
         EnableWindow(erase_, writable && record);
         EnableWindow(pause_, writable && scheduled);
         EnableWindow(cancel_, writable && scheduled);
-        set_text(pause_, record && record->paused ? text::resume : text::pause);
-        set_text(start_, editing_id_ ? text::save_schedule : text::add_schedule);
+        set_text(pause_, record && record->paused ? get_text(locale_, text::resume, text_en::resume) : get_text(locale_, text::pause, text_en::pause));
+        set_text(start_, editing_id_ ? get_text(locale_, text::save_schedule, text_en::save_schedule) : get_text(locale_, text::add_schedule, text_en::add_schedule));
         if (record) {
             set_text(status_, state_label(*record));
             if (scheduled && !record->paused && !record->conflict_with) {
@@ -550,24 +716,24 @@ class Panel {
                 wchar_t value[48]{};
                 swprintf_s(value, L"%02llu:%02llu:%02llu", seconds / 3600, (seconds / 60) % 60, seconds % 60);
                 set_text(countdown_, value);
-            } else set_text(countdown_, text::clock_empty);
-            const wchar_t* note = record->state == OccurrenceState::Uncertain ? text::uncertain_detail :
-                record->paused && scheduled ? text::paused_detail : nullptr;
-            std::wstring detail = note ? std::wstring(note) : std::wstring(text::actions[static_cast<int>(record->action)]) +
-                text::separator + local_time_at(record->due_utc_ms);
-            if (record->conflict_with) detail = std::wstring(text::conflict_detail) +
-                std::to_wstring(record->conflict_with) + text::conflict_hint;
+            } else set_text(countdown_, get_text(locale_, text::clock_empty, text_en::clock_empty));
+            const wchar_t* note = record->state == OccurrenceState::Uncertain ? get_text(locale_, text::uncertain_detail, text_en::uncertain_detail) :
+                record->paused && scheduled ? get_text(locale_, text::paused_detail, text_en::paused_detail) : nullptr;
+            std::wstring detail = note ? std::wstring(note) : std::wstring(get_text(locale_, text::actions[static_cast<int>(record->action)], text_en::actions[static_cast<int>(record->action)])) +
+                get_text(locale_, text::separator, text_en::separator) + local_time_at(record->due_utc_ms, locale_);
+            if (record->conflict_with) detail = std::wstring(get_text(locale_, text::conflict_detail, text_en::conflict_detail)) +
+                std::to_wstring(record->conflict_with) + get_text(locale_, text::conflict_hint, text_en::conflict_hint);
             else if (record->kind == ScheduleKind::Weekly) {
                 detail += L"\n";
-                for (unsigned i = 0; i < 7; ++i) if (record->weekdays & (1u << i)) detail += std::wstring(text::weekdays[i]) + L" ";
+                for (unsigned i = 0; i < 7; ++i) if (record->weekdays & (1u << i)) detail += std::wstring(get_text(locale_, text::weekdays[i], text_en::weekdays[i])) + L" ";
                 if (record->last_occurrence_id) {
                     auto last = *record; last.state = record->last_state; last.paused = false; last.conflict_with = 0;
-                    detail += std::wstring(text::separator) + text::last_result + state_label(last);
+                    detail += std::wstring(get_text(locale_, text::separator, text_en::separator)) + get_text(locale_, text::last_result, text_en::last_result) + state_label(last);
                 }
             }
             set_text(detail_, detail);
         } else {
-            set_text(status_, text::idle); set_text(countdown_, text::clock_empty); set_text(detail_, text::idle_detail);
+            set_text(status_, get_text(locale_, text::idle, text_en::idle)); set_text(countdown_, get_text(locale_, text::clock_empty, text_en::clock_empty)); set_text(detail_, get_text(locale_, text::idle_detail, text_en::idle_detail));
         }
         if (!writable) show_error();
         preview();
@@ -632,11 +798,11 @@ class Panel {
             preview();
         } else if (id == open_id || id == settings_id) {
             show(true);
-            if (id == settings_id) set_text(error_, text::settings_note);
+            if (id == settings_id) set_text(error_, get_text(locale_, text::settings_note, text_en::settings_note));
         } else if (id == visibility_id) {
             const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(window_, L"open",
                 L"ms-settings:taskbar", nullptr, nullptr, SW_SHOWNORMAL));
-            if (result <= 32) { show(true); set_text(error_, text::settings_error); }
+            if (result <= 32) { show(true); set_text(error_, get_text(locale_, text::settings_error, text_en::settings_error)); }
         } else if (id == menu_id) {
             menu();
         } else if (id == exit_id) {
@@ -646,12 +812,12 @@ class Panel {
     void menu() {
         HMENU menu = CreatePopupMenu();
         if (!menu) return;
-        AppendMenuW(menu, MF_STRING, open_id, text::open);
-        AppendMenuW(menu, MF_STRING, settings_id, text::settings);
-        AppendMenuW(menu, MF_STRING, visibility_id, text::notification_settings);
+        AppendMenuW(menu, MF_STRING, open_id, get_text(locale_, text::open, text_en::open));
+        AppendMenuW(menu, MF_STRING, settings_id, get_text(locale_, text::settings, text_en::settings));
+        AppendMenuW(menu, MF_STRING, visibility_id, get_text(locale_, text::notification_settings, text_en::notification_settings));
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_STRING | (book_.writable() && selected_record() && selected_record()->state == OccurrenceState::Scheduled ? MF_ENABLED : MF_GRAYED), cancel_id, text::cancel);
-        AppendMenuW(menu, MF_STRING, exit_id, text::exit);
+        AppendMenuW(menu, MF_STRING | (book_.writable() && selected_record() && selected_record()->state == OccurrenceState::Scheduled ? MF_ENABLED : MF_GRAYED), cancel_id, get_text(locale_, text::cancel, text_en::cancel));
+        AppendMenuW(menu, MF_STRING, exit_id, get_text(locale_, text::exit, text_en::exit));
         POINT point{};
         GetCursorPos(&point);
         SetForegroundWindow(window_);
@@ -664,9 +830,21 @@ class Panel {
     void draw_button(const DRAWITEMSTRUCT& draw) {
         const bool primary = draw.CtlID == schedule_id;
         const bool disabled = (draw.itemState & ODS_DISABLED) != 0;
-        const COLORREF fill = primary && !disabled ? accent_ : high_contrast_ ? GetSysColor(COLOR_BTNFACE) : RGB(233, 239, 248);
+
+        // Check if theme is dark
+        bool use_dark = false;
+        switch (theme_value_) {
+            case 0: use_dark = get_system_dark_theme(); break;
+            case 1: use_dark = false; break;
+            case 2: use_dark = true; break;
+        }
+
+        const COLORREF fill = primary && !disabled ? accent_ : high_contrast_ ? GetSysColor(COLOR_BTNFACE) :
+            use_dark ? RGB(60, 60, 60) : RGB(233, 239, 248);
         const COLORREF foreground = disabled ? GetSysColor(COLOR_GRAYTEXT) : primary ?
-            (high_contrast_ ? GetSysColor(COLOR_BTNTEXT) : RGB(255, 255, 255)) : ink_;
+            (high_contrast_ ? GetSysColor(COLOR_BTNTEXT) : RGB(255, 255, 255)) :
+            use_dark ? RGB(240, 240, 240) : RGB(24, 35, 53);
+
         HBRUSH brush = CreateSolidBrush(fill);
         HPEN pen = CreatePen(PS_SOLID, 1, fill);
         const auto old_brush = SelectObject(draw.hDC, brush);
@@ -674,6 +852,20 @@ class Panel {
         RoundRect(draw.hDC, draw.rcItem.left, draw.rcItem.top, draw.rcItem.right, draw.rcItem.bottom, px(10), px(10));
         SelectObject(draw.hDC, old_brush); SelectObject(draw.hDC, old_pen);
         DeleteObject(brush); DeleteObject(pen);
+
+        // Find font for this button
+        int font_index = 2; // default font
+        for (const auto& item : items_) {
+            if (item.handle == draw.hwndItem) {
+                font_index = item.font;
+                break;
+            }
+        }
+        HFONT old_font = nullptr;
+        if (fonts_[font_index]) {
+            old_font = static_cast<HFONT>(SelectObject(draw.hDC, fonts_[font_index]));
+        }
+
         wchar_t label[128]{};
         GetWindowTextW(draw.hwndItem, label, 128);
         SetBkMode(draw.hDC, TRANSPARENT);
@@ -682,16 +874,23 @@ class Panel {
         if (draw.itemState & ODS_SELECTED) OffsetRect(&rect, 0, 1);
         DrawTextW(draw.hDC, label, -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         if (draw.itemState & ODS_FOCUS) { InflateRect(&rect, -px(4), -px(4)); DrawFocusRect(draw.hDC, &rect); }
+
+        if (old_font) {
+            SelectObject(draw.hDC, old_font);
+        }
     }
 public:
     Panel() : storage_(data_file()), book_(storage_, calendar_) {
-        // Load theme preference from storage
+        // Load theme and locale preference from storage
         auto loaded = storage_.load();
         if (loaded.status == power_timer::LoadStatus::Loaded) {
-            theme_ = loaded.snapshot.theme;
+            theme_value_ = loaded.snapshot.theme;
+            locale_ = loaded.snapshot.locale;
+            book_.set_locale(locale_);
         }
         // Apply theme immediately
         colors();
+        refresh_locale_text();
     }
     ~Panel() {
         if (window_ && IsWindow(window_)) DestroyWindow(window_);
@@ -711,7 +910,7 @@ public:
             tray_.uVersion = NOTIFYICON_VERSION_4;
             Shell_NotifyIconW(NIM_SETVERSION, &tray_);
             if (error_) set_text(error_, L"");
-        } else if (error_) { set_text(error_, text::tray_error); show(false); }
+        } else if (error_) { set_text(error_, get_text(locale_, text::tray_error, text_en::tray_error)); show(false); }
     }
     bool create() {
         colors();
@@ -726,12 +925,19 @@ public:
         if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
         dpi_ = GetDpiForSystem();
         RECT work{};
-        SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-        RECT size{0, 0, px(580), px(804)};
+        // Position window on the monitor where the tray icon / cursor is
+        POINT cursor{};
+        GetCursorPos(&cursor);
+        HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi{};
+        mi.cbSize = sizeof(mi);
+        GetMonitorInfoW(monitor, &mi);
+        work = mi.rcWork;
+        RECT size{0, 0, px(580), px(920)};
         constexpr DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
         AdjustWindowRectExForDpi(&size, style, FALSE, WS_EX_CONTROLPARENT, dpi_);
         const int width = size.right - size.left, height = size.bottom - size.top;
-        window_ = CreateWindowExW(WS_EX_CONTROLPARENT, window_class, text::title, style,
+        window_ = CreateWindowExW(WS_EX_CONTROLPARENT, window_class, get_text(locale_, text::title, text_en::title), style,
             work.right - width - px(20), (std::max)(work.top, work.bottom - height - px(20)),
             width, height, nullptr, nullptr, cls.hInstance, this);
         if (!window_) return false;
@@ -749,11 +955,11 @@ public:
         tray_.uID = 1;
         tray_.uCallbackMessage = tray_message;
         tray_.hIcon = icon_;
-        wcsncpy_s(tray_.szTip, text::title, _TRUNCATE);
+        wcsncpy_s(tray_.szTip, get_text(locale_, text::title, text_en::title), _TRUNCATE);
         if (!SetTimer(window_, timer_id, 250, nullptr)) { DestroyWindow(window_); return false; }
         add_tray();
         // Initialize theme combo selection after controls created
-        if (theme_) SendMessageW(theme_, CB_SETCURSEL, static_cast<WPARAM>(theme_), 0);
+        if (theme_combo_) SendMessageW(theme_combo_, CB_SETCURSEL, static_cast<WPARAM>(theme_value_), 0);
         refresh();
         host_window.store(window_);
         if (show_on_start) show(true);
@@ -778,9 +984,17 @@ public:
                 else if (LOWORD(wparam) == action_id && HIWORD(wparam) == CBN_SELCHANGE) self->preview();
                 else if (LOWORD(wparam) == kind_id && HIWORD(wparam) == CBN_SELCHANGE) self->show_kind();
                 else if (LOWORD(wparam) == theme_id && HIWORD(wparam) == CBN_SELCHANGE) {
-                    self->theme_ = static_cast<unsigned>(SendMessageW(self->theme_, CB_GETCURSEL, 0, 0));
-                    self->book_.set_theme(self->theme_);
+                    self->theme_value_ = static_cast<unsigned>(SendMessageW(self->theme_combo_, CB_GETCURSEL, 0, 0));
+                    self->book_.set_theme(self->theme_value_);
                     self->colors();
+                    self->refresh_locale_text();
+                    return 0;
+                }
+                else if (LOWORD(wparam) == locale_id && HIWORD(wparam) == CBN_SELCHANGE) {
+                    unsigned locale = static_cast<unsigned>(SendMessageW(self->locale_combo_, CB_GETCURSEL, 0, 0));
+                    self->book_.set_locale(locale);
+                    self->locale_ = locale;
+                    self->refresh_locale_text();
                     return 0;
                 }
                 else if (HIWORD(wparam) == BN_CLICKED) self->command(LOWORD(wparam));
@@ -816,6 +1030,9 @@ public:
                 }
                 return 0;
             case show_message: self->show(true); return 0;
+            case sound_message:
+                if (self->book_.writable() && !self->book_.set_sound_enabled(wparam != 0)) self->show_error();
+                return 0;
             case WM_CONTEXTMENU: self->menu(); return 0;
             case stop_message: EndMenu(); DestroyWindow(window); return 0;
             case WM_CLOSE: ShowWindow(window, SW_HIDE); return 0;
@@ -832,7 +1049,24 @@ public:
                 self->fonts_and_layout();
                 const auto* rect = reinterpret_cast<RECT*>(lparam);
                 SetWindowPos(window, nullptr, rect->left, rect->top, rect->right - rect->left,
-                    rect->bottom - rect->top, SWP_NOZORDER | SWP_NOACTIVATE); return 0;
+                    rect->bottom - rect->top, SWP_NOZORDER | SWP_NOACTIVATE);
+                // Ensure window stays on the correct monitor after DPI change
+                POINT center{rect->left + (rect->right - rect->left) / 2, rect->top + (rect->bottom - rect->top) / 2};
+                HMONITOR monitor = MonitorFromPoint(center, MONITOR_DEFAULTTONEAREST);
+                MONITORINFO mi{};
+                mi.cbSize = sizeof(mi);
+                if (GetMonitorInfoW(monitor, &mi)) {
+                    // Check if window is outside monitor work area
+                    if (rect->left < mi.rcWork.left || rect->top < mi.rcWork.top ||
+                        rect->right > mi.rcWork.right || rect->bottom > mi.rcWork.bottom) {
+                        int width = rect->right - rect->left;
+                        int height = rect->bottom - rect->top;
+                        int x = mi.rcWork.right - width - self->px(20);
+                        int y = (std::max)(mi.rcWork.top, mi.rcWork.bottom - height - self->px(20));
+                        SetWindowPos(window, nullptr, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+                    }
+                }
+                return 0;
             }
             case WM_SETTINGCHANGE:
                 self->colors();
@@ -898,9 +1132,17 @@ inline DWORD WINAPI ui_main(void*) {
                 if (message.message == WM_KEYDOWN && message.wParam == VK_ESCAPE && window) {
                     ShowWindow(window, SW_HIDE); continue;
                 }
-                if (message.message == WM_KEYDOWN && message.wParam == VK_RETURN && window &&
-                    (GetFocus() == GetDlgItem(window, duration_id))) {
-                    PostMessageW(window, WM_COMMAND, schedule_id, 0); continue;
+                if (message.message == WM_KEYDOWN && message.wParam == VK_RETURN && window) {
+                    HWND focus = GetFocus();
+                    // ENTER on duration edit triggers schedule
+                    if (focus == GetDlgItem(window, duration_id)) {
+                        PostMessageW(window, WM_COMMAND, schedule_id, 0); continue;
+                    }
+                    // ENTER on list view triggers edit
+                    if (focus == GetDlgItem(window, list_id)) {
+                        PostMessageW(window, WM_COMMAND, edit_id, 0); continue;
+                    }
+                    // ENTER on combos confirms selection (standard behavior)
                 }
                 if (!window || !IsDialogMessageW(window, &message)) {
                     TranslateMessage(&message); DispatchMessageW(&message);

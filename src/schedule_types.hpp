@@ -28,6 +28,8 @@ struct ScheduleSnapshot {
     std::uint64_t next_id = 1, next_occurrence_id = 1;
     std::vector<ScheduleRecord> records;
     bool sound_enabled = false;
+    unsigned theme = 0; // 0=automatic, 1=light, 2=dark
+    unsigned locale = 0; // 0=pt-BR, 1=English
 };
 enum class LoadStatus { Missing, Loaded, Invalid, Unavailable };
 struct LoadResult { LoadStatus status; ScheduleSnapshot snapshot; };
