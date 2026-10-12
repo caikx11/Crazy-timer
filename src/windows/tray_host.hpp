@@ -27,6 +27,7 @@
 #include "../strings.hpp"
 #include "../strings_en.hpp"
 #include "../warning_tracker.hpp"
+#include "../power_executor.hpp"
 
 namespace power_timer::windows {
 inline const wchar_t* get_text(unsigned locale, const wchar_t* pt_br, const wchar_t* en) {
@@ -125,6 +126,7 @@ class Panel {
     HFONT fonts_[4]{};
     HBRUSH background_{};
     HICON icon_{};
+    SimulatedBackend backend_;
     HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{}, postpone_{}, theme_combo_{}, locale_combo_{};
     FileScheduleStorage storage_;
     WindowsCalendar calendar_;
@@ -610,6 +612,15 @@ class Panel {
         const auto now = clock_sample();
         for (const auto& delivery : book_.tick(now)) {
             if (log_message) log_message(get_text(locale_, text::completed_detail, text_en::completed_detail));
+            const auto exec = execute_power_action(backend_, delivery.action);
+            if (exec.status != ExecStatus::Accepted) {
+                // Intent stays Uncertain: never retried, next weekly occurrence untouched.
+                notify(get_text(locale_, text::state_uncertain, text_en::state_uncertain),
+                    exec.status == ExecStatus::NotAvailable
+                        ? get_text(locale_, text::power_unavailable, text_en::power_unavailable)
+                        : get_text(locale_, text::power_failed, text_en::power_failed));
+                continue;
+            }
             const bool recorded = book_.complete(delivery);
             if (!recorded) show_error();
             notify(recorded ? get_text(locale_, text::completed, text_en::completed) : get_text(locale_, text::state_uncertain, text_en::state_uncertain),

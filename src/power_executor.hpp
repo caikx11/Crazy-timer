@@ -47,4 +47,12 @@ inline ExecResult execute_power_action(PowerBackend& backend, Action action) {
     return backend.request(action);
 }
 
+// Simulation target: reports everything available and accepts without touching
+// the system. Physically separate from any real executor.
+class SimulatedBackend : public PowerBackend {
+public:
+    PowerCapabilities query() override { return {}; }
+    ExecResult request(Action) override { return {ExecStatus::Accepted, Availability::Available, 0}; }
+};
+
 } // namespace power_timer
