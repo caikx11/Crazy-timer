@@ -50,7 +50,7 @@ inline void (*log_message)(const wchar_t*) = nullptr;
 enum ControlId { action_id = 100, duration_id, schedule_id, cancel_id,
                  preset_id = 110, open_id = 120, settings_id, visibility_id, exit_id, menu_id,
                  list_id = 130, edit_id, pause_id, erase_id, new_id, postpone_id,
-                 kind_id = 140, date_id, time_id, daily_id, weekday_id = 150, theme_id = 160, locale_id = 170 };
+                 force_id = 180, kind_id = 140, date_id, time_id, daily_id, weekday_id = 150, theme_id = 160, locale_id = 170 };
 
 inline ClockSample clock_sample() {
     FILETIME file{};
@@ -127,6 +127,7 @@ class Panel {
     HBRUSH background_{};
     HICON icon_{};
     SimulatedBackend backend_;
+    HWND force_{};
     HWND window_{}, action_{}, duration_{}, preview_{}, status_{}, countdown_{}, detail_{}, error_{}, start_{}, cancel_{}, postpone_{}, theme_combo_{}, locale_combo_{};
     FileScheduleStorage storage_;
     WindowsCalendar calendar_;
@@ -222,6 +223,7 @@ class Panel {
             SendMessageW(theme_combo_, CB_SETCURSEL, static_cast<WPARAM>(theme_value_), 0);
         }
 
+        if (force_) SetWindowTextW(force_, get_text(locale_, text::force_label, text_en::force_label));
         // Update action combo box
         if (action_) {
             SendMessageW(action_, CB_RESETCONTENT, 0, 0);
@@ -443,7 +445,8 @@ class Panel {
             SendMessageW(days_[i], BM_SETCHECK, BST_CHECKED, 0);
             weekly_controls_.push_back(days_[i]);
         }
-        preview_ = add(L"STATIC", L"", 0, 0, 24, 360, 532, 30, 2);
+        preview_ = add(L"STATIC", L"", 0, 0, 24, 360, 300, 30, 2);
+        force_ = add(L"BUTTON", get_text(locale_, text::force_label, text_en::force_label), WS_TABSTOP | BS_AUTOCHECKBOX, force_id, 330, 360, 226, 30, 2);
         start_ = add(L"BUTTON", get_text(locale_, text::add_schedule, text_en::add_schedule), WS_TABSTOP | BS_OWNERDRAW, schedule_id,
                      24, 400, 344, 36);
         add(L"BUTTON", get_text(locale_, text::new_schedule, text_en::new_schedule), WS_TABSTOP | BS_OWNERDRAW, new_id, 380, 400, 176, 36);
@@ -597,7 +600,9 @@ class Panel {
             auto due = record.state == OccurrenceState::Scheduled ? local_time_at(effective_due_utc_ms(record), locale_) : std::wstring(get_text(locale_, text::no_next, text_en::no_next));
             auto rule = record.kind == ScheduleKind::Duration ? std::to_wstring(record.minutes) + L" min" :
                 std::wstring(record.kind == ScheduleKind::Once ? text::once_rule : text::weekly_rule);
-            ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(get_text(locale_, text::actions[static_cast<int>(record.action)], text_en::actions[static_cast<int>(record.action)])));
+            auto action_text = std::wstring(get_text(locale_, text::actions[static_cast<int>(record.action)], text_en::actions[static_cast<int>(record.action)]));
+            if (record.force_shutdown) action_text += get_text(locale_, text::forced_tag, text_en::forced_tag);
+            ListView_SetItemText(list_, row, 1, action_text.data());
             ListView_SetItemText(list_, row, 2, due.data());
             ListView_SetItemText(list_, row, 3, const_cast<wchar_t*>(state_label(record)));
             ListView_SetItemText(list_, row, 4, rule.data());
@@ -612,7 +617,7 @@ class Panel {
         const auto now = clock_sample();
         for (const auto& delivery : book_.tick(now)) {
             if (log_message) log_message(get_text(locale_, text::completed_detail, text_en::completed_detail));
-            const auto exec = execute_power_action(backend_, delivery.action);
+            const auto exec = execute_power_action(backend_, delivery.action, delivery.force);
             if (exec.status != ExecStatus::Accepted) {
                 // Intent stays Uncertain: never retried, next weekly occurrence untouched.
                 notify(get_text(locale_, text::state_uncertain, text_en::state_uncertain),
@@ -699,6 +704,22 @@ class Panel {
         preview();
         if (!tray_added_ && now.monotonic_ms - last_tray_try_ >= 5000) add_tray();
     }
+    // Forced close only applies to Shutdown; any other action clears it.
+    void sync_force() {
+        if (!force_) return;
+        const bool shutdown = selected_action() == Action::Shutdown;
+        if (!shutdown) SendMessageW(force_, BM_SETCHECK, BST_UNCHECKED, 0);
+        EnableWindow(force_, shutdown);
+    }
+    void confirm_force() {
+        if (SendMessageW(force_, BM_GETCHECK, 0, 0) != BST_CHECKED) return;
+        if (MessageBoxW(window_, get_text(locale_, text::force_warning, text_en::force_warning),
+                get_text(locale_, text::force_title, text_en::force_title), MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+            SendMessageW(force_, BM_SETCHECK, BST_UNCHECKED, 0);
+    }
+    bool force_checked() const {
+        return force_ && SendMessageW(force_, BM_GETCHECK, 0, 0) == BST_CHECKED && selected_action() == Action::Shutdown;
+    }
     void command(int id) {
         if (id >= preset_id && id < preset_id + static_cast<int>(std::size(text::presets))) {
             const auto minutes = std::to_wstring(text::presets[id - preset_id].minutes);
@@ -723,16 +744,19 @@ class Panel {
             }
             if (ok) {
                 selected_id_ = editing ? editing_id_ : book_.list().back().id;
+                ok = book_.set_force_shutdown(selected_id_, force_checked());
                 editing_id_ = 0;
             }
             show_error(); refresh();
         } else if (id == new_id) {
-            editing_id_ = 0; set_text(error_, L""); refresh();
+            editing_id_ = 0; set_text(error_, L"");
+            SendMessageW(force_, BM_SETCHECK, BST_UNCHECKED, 0); sync_force(); refresh();
             SetFocus(selected_kind() == ScheduleKind::Duration ? duration_ : time_);
         } else if (id == edit_id) {
             if (const auto* record = selected_record()) {
                 editing_id_ = record->id;
                 SendMessageW(action_, CB_SETCURSEL, static_cast<WPARAM>(record->action), 0);
+                SendMessageW(force_, BM_SETCHECK, record->force_shutdown ? BST_CHECKED : BST_UNCHECKED, 0); sync_force();
                 SendMessageW(kind_, CB_SETCURSEL, static_cast<WPARAM>(record->kind), 0);
                 set_text(duration_, std::to_wstring(record->minutes));
                 if (record->kind != ScheduleKind::Duration) {
@@ -953,7 +977,8 @@ public:
                 if (LOWORD(wparam) == duration_id && HIWORD(wparam) == EN_CHANGE) {
                     self->preview();
                 }
-                else if (LOWORD(wparam) == action_id && HIWORD(wparam) == CBN_SELCHANGE) self->preview();
+                else if (LOWORD(wparam) == action_id && HIWORD(wparam) == CBN_SELCHANGE) { self->sync_force(); self->preview(); }
+                else if (LOWORD(wparam) == force_id && HIWORD(wparam) == BN_CLICKED) self->confirm_force();
                 else if (LOWORD(wparam) == kind_id && HIWORD(wparam) == CBN_SELCHANGE) self->show_kind();
                 else if (LOWORD(wparam) == theme_id && HIWORD(wparam) == CBN_SELCHANGE) {
                     self->theme_value_ = static_cast<unsigned>(SendMessageW(self->theme_combo_, CB_GETCURSEL, 0, 0));

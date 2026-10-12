@@ -35,16 +35,16 @@ public:
     virtual ~PowerBackend() = default;
     virtual PowerCapabilities query() = 0;
     // Must restore any privilege it enabled, on every path, and return the real error.
-    virtual ExecResult request(Action action) = 0;
+    virtual ExecResult request(Action action, bool force) = 0;
 };
 
-// Checks capability right before the request; never retries. Normal shutdown
-// never forces applications (force is not a parameter here by design).
-inline ExecResult execute_power_action(PowerBackend& backend, Action action) {
+// Checks capability right before the request; never retries. Applications are
+// forced to close only when the schedule explicitly opted in, and only for Shutdown.
+inline ExecResult execute_power_action(PowerBackend& backend, Action action, bool force = false) {
     const auto availability = backend.query().of(action);
     if (availability != Availability::Available)
         return {ExecStatus::NotAvailable, availability, 0};
-    return backend.request(action);
+    return backend.request(action, force && action == Action::Shutdown);
 }
 
 // Simulation target: reports everything available and accepts without touching
@@ -52,7 +52,7 @@ inline ExecResult execute_power_action(PowerBackend& backend, Action action) {
 class SimulatedBackend : public PowerBackend {
 public:
     PowerCapabilities query() override { return {}; }
-    ExecResult request(Action) override { return {ExecStatus::Accepted, Availability::Available, 0}; }
+    ExecResult request(Action, bool) override { return {ExecStatus::Accepted, Availability::Available, 0}; }
 };
 
 } // namespace power_timer

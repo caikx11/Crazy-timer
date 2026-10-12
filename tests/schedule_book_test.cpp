@@ -788,8 +788,25 @@ void monotonic_projection_has_no_stale_or_epoch_false_conflicts() {
 struct RejectingBackend : PowerBackend {
     int requests = 0;
     PowerCapabilities query() override { return {}; }
-    ExecResult request(Action) override { ++requests; return {ExecStatus::Rejected, Availability::Available, 5}; }
+    ExecResult request(Action, bool) override { ++requests; return {ExecStatus::Rejected, Availability::Available, 5}; }
 };
+void force_shutdown_is_explicit_per_schedule() {
+    MemoryStorage storage;
+    ScheduleBook book(storage);
+    check(book.initialize({0, 0}) && book.create(Action::Shutdown, L"1", {0, 0}) &&
+          book.create(Action::Shutdown, L"2", {0, 0}) && book.create(Action::Sleep, L"3", {0, 0}) &&
+          !book.list()[0].force_shutdown, "new schedules are not forced");
+    check(book.set_force_shutdown(1, true) && book.list()[0].force_shutdown && !book.list()[1].force_shutdown,
+          "force applies to one schedule only");
+    check(!book.set_force_shutdown(3, true) && !book.list()[2].force_shutdown, "sleep cannot be forced");
+    ScheduleBook reopened(storage);
+    check(reopened.initialize({0, 0}) && reopened.list()[0].force_shutdown && !reopened.list()[1].force_shutdown,
+          "force choice persists individually");
+    const auto first = reopened.tick({60000, 60000});
+    const auto second = reopened.tick({120000, 120000});
+    check(first.size() == 1 && first[0].force && second.size() == 1 && !second[0].force,
+          "delivery carries each schedule's force setting");
+}
 void failed_power_request_is_not_repeated_after_restart() {
     MemoryStorage storage;
     ScheduleBook book(storage);
@@ -805,6 +822,7 @@ void failed_power_request_is_not_repeated_after_restart() {
           backend.requests == 1, "failed request never repeats after restart and is not shown as completed");
 }
 int main() {
+    force_shutdown_is_explicit_per_schedule();
     failed_power_request_is_not_repeated_after_restart();
     monotonic_projection_has_no_stale_or_epoch_false_conflicts();
     forced_shutdown_is_orthogonal_to_conflicts_and_preserved_on_edit();

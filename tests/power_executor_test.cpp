@@ -11,7 +11,8 @@ struct Fake : PowerBackend {
     ExecResult result{ExecStatus::Accepted, Availability::Available, 0};
     int queries = 0, requests = 0;
     PowerCapabilities query() override { ++queries; return caps; }
-    ExecResult request(Action) override { ++requests; return result; }
+    bool last_force = false;
+    ExecResult request(Action, bool force) override { ++requests; last_force = force; return result; }
 };
 int main() {
     {
@@ -38,6 +39,15 @@ int main() {
         fake.caps.hibernate = Availability::QueryFailed;
         check(execute_power_action(fake, Action::Hibernate).availability == Availability::QueryFailed, "query failure reported");
         check(execute_power_action(fake, Action::Shutdown).status == ExecStatus::Accepted, "other actions unaffected");
+    }
+    {
+        Fake fake;
+        execute_power_action(fake, Action::Shutdown);
+        check(!fake.last_force, "normal shutdown does not force");
+        execute_power_action(fake, Action::Shutdown, true);
+        check(fake.last_force, "opted-in shutdown forces");
+        execute_power_action(fake, Action::Sleep, true);
+        check(!fake.last_force, "sleep never forces even if flag leaks");
     }
     std::cout << "power_executor ok\n";
 }

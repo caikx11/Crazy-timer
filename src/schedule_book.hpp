@@ -109,7 +109,7 @@ public:
                 ? now.monotonic_ms - deadlines_.at(record.id) : now.utc_ms - effective_due_utc_ms(record);
             const bool deliver = !record.paused && late <= 5000;
             record.state = deliver ? OccurrenceState::Uncertain : OccurrenceState::Expired;
-            if (deliver) deliveries.push_back({record.id, record.occurrence_id, record.action});
+            if (deliver) deliveries.push_back({record.id, record.occurrence_id, record.action, record.force_shutdown});
             if (record.kind == ScheduleKind::Weekly) {
                 consume_weekly(record, record.state);
                 if (!advance_weekly(candidate, record, now)) { ready_ = false; return {}; }
@@ -117,6 +117,19 @@ public:
         }
         if (changed && !commit(candidate)) { ready_ = false; return {}; }
         return deliveries;
+    }
+
+    // Explicit per-schedule opt-in; only meaningful for Shutdown. No global default.
+    bool set_force_shutdown(std::uint64_t id, bool force) {
+        if (!ready_) return false;
+        auto candidate = snapshot_;
+        auto record = find(candidate, id);
+        if (record == candidate.records.end()) return fail(BookError::NotFound);
+        if (force && record->action != Action::Shutdown) return fail(BookError::InvalidInput);
+        if (record->force_shutdown == force) { error_ = BookError::None; return true; }
+        record->force_shutdown = force;
+        if (!commit(candidate)) { ready_ = false; return false; }
+        return true;
     }
 
     bool complete(Delivery delivery) {

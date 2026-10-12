@@ -46,7 +46,7 @@ public:
     virtual LoadResult load() = 0;
     virtual bool save(const ScheduleSnapshot&) = 0;
 };
-struct Delivery { std::uint64_t id, occurrence_id; Action action; };
+struct Delivery { std::uint64_t id, occurrence_id; Action action; bool force = false; };
 enum class BookError { None, InvalidInput, NotFound, Storage, InvalidData, NotReady, Calendar, Conflict };
 
 } // namespace power_timer
