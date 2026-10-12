@@ -1,5 +1,4 @@
-# Power Timer
-
+# Crazy-time
 Agendador minimalista de desligamento, suspensão e hibernação para Windhawk, em desenvolvimento.
 
 A prévia local permite programar por duração de 1 minuto a 7 dias, data e hora explícitas ou repetição nos dias da semana. É possível manter vários agendamentos, editar, pausar, reativar, cancelar uma ocorrência e excluir. A lista e os prazos são recuperados ao reabrir. **Esta versão funciona exclusivamente em simulação.** Nenhuma ação de energia real é executada.
