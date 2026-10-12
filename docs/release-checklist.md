@@ -7,7 +7,7 @@ Nada aqui foi decidido ou publicado. Itens abertos permanecem abertos até o usu
 - [x] **Licença**: MIT, decidida em 12/10/2026 (arquivo `LICENSE`, titular "caikx11"; trocar pelo nome completo se preferir) e `@license MIT` no cabeçalho do mod.
 - [ ] **Autoria e perfil** a constar no cabeçalho do mod e no catálogo.
 - [ ] **Declaração de assistência por IA**: o código foi escrito com apoio de assistentes de IA; texto final a aprovar.
-- [ ] Visibilidade do repositório (hoje privado).
+- [ ] Visibilidade do repositório: o usuário pediu para torná-lo público (12/10/2026). Só o usuário pode mudar em Settings → Danger Zone → Change visibility; README em inglês (`README.en.md`) criado e nomes de máquina/usuário do Windows removidos dos documentos de diagnóstico (continuam no histórico do git).
 
 ## Qualidade antes de publicar
 - [ ] Roteiro Windows 11 completo (`docs/validation/task-12-roteiro-win11.md`).
