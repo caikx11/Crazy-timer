@@ -59,3 +59,4 @@ try {
 & (Join-Path $PSScriptRoot 'test-storage.ps1') -Compiler $Compiler
 & (Join-Path $PSScriptRoot 'test-calendar.ps1') -Compiler $Compiler
 & (Join-Path $PSScriptRoot 'test-warnings.ps1') -Compiler $Compiler
+& (Join-Path $PSScriptRoot 'test-windows-startup.ps1') -Compiler $Compiler

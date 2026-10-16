@@ -944,7 +944,10 @@ public:
             tray_.uVersion = NOTIFYICON_VERSION_4;
             Shell_NotifyIconW(NIM_SETVERSION, &tray_);
             if (error_) set_text(error_, L"");
-        } else if (error_) { set_text(error_, get_text(locale_, text::tray_error, text_en::tray_error)); show(false); }
+        } else {
+            if (error_) set_text(error_, get_text(locale_, text::tray_error, text_en::tray_error));
+            if (log_message) log_message(L"Tray icon registration failed; will retry without opening the panel.");
+        }
     }
     bool create() {
         colors();
@@ -1162,7 +1165,8 @@ inline DWORD WINAPI ui_main(void*) {
     if (!instance) { SetEvent(ready_event); return 1; }
     const DWORD locked = WaitForSingleObject(instance, 0);
     if (locked != WAIT_OBJECT_0 && locked != WAIT_ABANDONED) {
-        if (HWND prior = FindWindowW(window_class, nullptr)) PostMessageW(prior, show_message, 0, 0);
+        if (show_on_start)
+            if (HWND prior = FindWindowW(window_class, nullptr)) PostMessageW(prior, show_message, 0, 0);
         CloseHandle(instance); SetEvent(ready_event); return 0;
     }
     const auto prior_dpi = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
