@@ -43,7 +43,7 @@ notification area. Português abaixo.
 
 ## How to use
 
-1. Enable the mod. A tray icon appears (and the panel opens, if enabled in settings).
+1. Enable the mod. A tray icon appears; click it to open the panel.
 2. Pick the action and how it is scheduled, then press **Add schedule**.
 3. Click the tray icon to open the panel again. Closing the panel keeps the
    countdown running; right-click the icon or use **Options** to exit.
@@ -71,11 +71,6 @@ painel não interrompe a contagem. Desativar o mod encerra tudo.
 
 // ==WindhawkModSettings==
 /*
-- showOnStart: true
-  $name: Open panel on startup
-  $name:pt-BR: Abrir painel ao iniciar
-  $description: The tray icon remains available when the panel is hidden.
-  $description:pt-BR: O ícone continua disponível quando o painel está oculto.
 - soundEnabled: false
   $name: Play notification sounds
   $name:pt-BR: Reproduzir sons de notificação
@@ -87,7 +82,7 @@ painel não interrompe a contagem. Desativar o mod encerra tudo.
 #include "tray_host.hpp"
 
 BOOL WhTool_ModInit() {
-    return power_timer::windows::start(Wh_GetIntSetting(L"showOnStart") != 0,
+    return power_timer::windows::start(false,
         [](const wchar_t* message) { Wh_Log(L"%s", message); }, true);
 }
 
@@ -95,10 +90,6 @@ void WhTool_ModSettingsChanged() {
     if (HWND window = power_timer::windows::host_window.load())
         PostMessageW(window, power_timer::windows::sound_message,
             Wh_GetIntSetting(L"soundEnabled") != 0 ? 1 : 0, 0);
-    if (Wh_GetIntSetting(L"showOnStart")) {
-        if (HWND window = power_timer::windows::host_window.load())
-            PostMessageW(window, power_timer::windows::show_message, 0, 0);
-    }
 }
 
 void WhTool_ModUninit() {
