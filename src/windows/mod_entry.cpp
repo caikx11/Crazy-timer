@@ -82,6 +82,12 @@ painel não interrompe a contagem. Desativar o mod encerra tudo.
 #include "tray_host.hpp"
 
 BOOL WhTool_ModInit() {
+    power_timer::windows::mod_storage_path = [](wchar_t* buffer, size_t count) {
+        return Wh_GetModStoragePath(buffer, count);
+    };
+    power_timer::windows::notification_sound_setting = [] {
+        return Wh_GetIntSetting(L"soundEnabled") != 0;
+    };
     return power_timer::windows::start(false,
         [](const wchar_t* message) { Wh_Log(L"%s", message); }, true);
 }

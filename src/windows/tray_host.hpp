@@ -64,6 +64,10 @@ inline std::atomic_bool initialized{};
 inline std::atomic_bool user_requested_exit{};
 inline bool show_on_start = true;
 inline bool dedicated_process = false;
+// Set by the Windhawk mod entry: where the mod may keep its files, and the live
+// value of the "soundEnabled" setting. Unset in the local preview.
+inline size_t (*mod_storage_path)(wchar_t*, size_t) = nullptr;
+inline bool (*notification_sound_setting)() = nullptr;
 inline void (*log_message)(const wchar_t*) = nullptr;
 
 enum ControlId { action_id = 100, duration_id, schedule_id, cancel_id,
@@ -79,12 +83,55 @@ inline ClockSample clock_sample() {
     return {(ticks.QuadPart - 116444736000000000ULL) / 10000, GetTickCount64()};
 }
 
+inline std::wstring current_user_sid() {
+    HANDLE token{};
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return L"";
+    DWORD length{};
+    GetTokenInformation(token, TokenUser, nullptr, 0, &length);
+    std::vector<BYTE> data(length);
+    const bool ok = GetTokenInformation(token, TokenUser, data.data(), length, &length) != FALSE;
+    CloseHandle(token);
+    if (!ok) return L"";
+    LPWSTR sid{};
+    if (!ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid, &sid)) return L"";
+    const std::wstring result(sid);
+    LocalFree(sid);
+    return result;
+}
+
+// Location used by earlier versions; read only to migrate existing schedules.
+inline std::wstring legacy_data_file() {
+    wchar_t local[MAX_PATH]{};
+    if (FAILED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, local))) return L"";
+    return std::wstring(local) + L"\\PowerTimer\\schedules-v1.dat";
+}
+
 inline std::wstring data_file() {
+    if (dedicated_process) {
+        // The mod keeps its data in Windhawk's mod storage, one file per user (the
+        // storage folder is shared by all users of the machine).
+        wchar_t directory[MAX_PATH]{};
+        const auto sid = current_user_sid();
+        if (!mod_storage_path || !mod_storage_path(directory, std::size(directory)) || sid.empty()) return L"";
+        const auto path = std::wstring(directory) + L"\\schedules-" + sid + L".dat";
+        const DWORD attributes = GetFileAttributesW(path.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES) return path;
+        if (GetLastError() != ERROR_FILE_NOT_FOUND) return L"";
+        const auto legacy = legacy_data_file();
+        if (!legacy.empty() && !CopyFileW(legacy.c_str(), path.c_str(), TRUE)) {
+            const DWORD error = GetLastError();
+            // Never replace an existing destination or hide a failed migration.
+            if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND &&
+                error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) return L"";
+        }
+        return path;
+    }
+    // Local preview only.
     wchar_t local[MAX_PATH]{};
     if (FAILED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, local))) return L"";
     const auto directory = std::wstring(local) + L"\\PowerTimer";
     if (!CreateDirectoryW(directory.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) return L"";
-    return directory + (dedicated_process ? L"\\schedules-v1.dat" : L"\\preview-v1.dat");
+    return directory + L"\\preview-v1.dat";
 }
 
 inline void set_text(HWND window, const std::wstring& value) {
@@ -174,6 +221,7 @@ class Panel {
     bool high_contrast_ = false, dark_ = false;
     unsigned theme_value_ = 0; // 0=automatic, 1=light, 2=dark
     unsigned locale_ = 0; // 0=pt-BR, 1=English
+    bool initialize_locale_ = false;
 
     int px(int value) const { return MulDiv(value, static_cast<int>(dpi_), 96); }
     HWND add(const wchar_t* type, const wchar_t* label, DWORD style, int id,
@@ -346,7 +394,7 @@ class Panel {
     void apply_control_themes() {
         using SetWindowThemeFn = HRESULT(WINAPI*)(HWND, LPCWSTR, LPCWSTR);
         static const auto set_theme = reinterpret_cast<SetWindowThemeFn>(
-            [] { const auto module = LoadLibraryW(L"uxtheme.dll"); return module ? GetProcAddress(module, "SetWindowTheme") : nullptr; }());
+            [] { const auto module = LoadLibraryExW(L"uxtheme.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32); return module ? GetProcAddress(module, "SetWindowTheme") : nullptr; }());
         if (!set_theme) return;
         const bool dark = dark_ && !high_contrast_;
         const auto apply = [&](HWND control, const wchar_t* dark_name) {
@@ -511,7 +559,8 @@ class Panel {
         wcsncpy_s(notice.szInfoTitle, title, _TRUNCATE);
         wcsncpy_s(notice.szInfo, body, _TRUNCATE);
         // Respect sound setting: NIIF_NOSOUND only if sound disabled
-        const UINT sound_flag = book_.get_sound_enabled() ? 0 : NIIF_NOSOUND;
+        const bool sound = notification_sound_setting ? notification_sound_setting() : book_.get_sound_enabled();
+        const UINT sound_flag = sound ? 0 : NIIF_NOSOUND;
         notice.dwInfoFlags = NIIF_INFO | sound_flag | NIIF_RESPECT_QUIET_TIME;
         Shell_NotifyIconW(NIM_MODIFY, &notice);
     }
@@ -919,7 +968,10 @@ public:
         if (loaded.status == power_timer::LoadStatus::Loaded) {
             theme_value_ = loaded.snapshot.theme;
             locale_ = loaded.snapshot.locale;
-            book_.set_locale(locale_);
+        } else if (loaded.status == power_timer::LoadStatus::Missing) {
+            // First run: follow the Windows display language. Persisted after the book is ready.
+            locale_ = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_PORTUGUESE ? 0 : 1;
+            initialize_locale_ = true;
         }
         // Apply theme immediately
         colors();
@@ -975,6 +1027,17 @@ public:
             work.right - width - px(20), (std::max)(work.top, work.bottom - height - px(20)),
             width, height, nullptr, nullptr, cls.hInstance, this);
         if (!window_) return false;
+        // The monitor the window landed on may use another DPI than the system one: resize to match.
+        if (const UINT actual_dpi = GetDpiForWindow(window_); actual_dpi && actual_dpi != dpi_) {
+            dpi_ = actual_dpi;
+            RECT actual{0, 0, px(580), px(920)};
+            AdjustWindowRectExForDpi(&actual, style, FALSE, WS_EX_CONTROLPARENT, dpi_);
+            const int actual_width = actual.right - actual.left;
+            const int actual_height = (std::min)(actual.bottom - actual.top, static_cast<int>(work.bottom - work.top));
+            SetWindowPos(window_, nullptr, work.right - actual_width - px(20),
+                (std::max)(static_cast<int>(work.top), static_cast<int>(work.bottom) - actual_height - px(20)),
+                actual_width, actual_height, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         // Explorer may have lower integrity than the tool host. Allow only its
         // inert tray-recreation broadcast, never commands or our WM_APP channel.
         if (!taskbar_created_ || !ChangeWindowMessageFilterEx(window_, taskbar_created_, MSGFLT_ALLOW, nullptr)) {
@@ -982,7 +1045,8 @@ public:
             DestroyWindow(window_);
             return false;
         }
-        book_.initialize(clock_sample());
+        // Only a freshly initialised book may be written: a failed load must never overwrite the file.
+        if (book_.initialize(clock_sample()) && initialize_locale_) book_.set_locale(locale_);
         try { controls(); } catch (...) { DestroyWindow(window_); return false; }
         tray_.cbSize = sizeof(tray_);
         tray_.hWnd = window_;
@@ -1142,18 +1206,9 @@ public:
 };
 
 inline HANDLE user_mutex() {
-    HANDLE token{};
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return nullptr;
-    DWORD length{};
-    GetTokenInformation(token, TokenUser, nullptr, 0, &length);
-    std::vector<BYTE> data(length);
-    const bool ok = GetTokenInformation(token, TokenUser, data.data(), length, &length) != FALSE;
-    CloseHandle(token);
-    if (!ok) return nullptr;
-    LPWSTR sid{};
-    if (!ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid, &sid)) return nullptr;
+    const auto sid = current_user_sid();
+    if (sid.empty()) return nullptr;
     const std::wstring name = std::wstring(L"Global\\PowerTimer.Simulation.") + sid;
-    LocalFree(sid);
     return CreateMutexW(nullptr, FALSE, name.c_str());
 }
 

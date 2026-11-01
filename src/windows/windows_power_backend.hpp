@@ -58,7 +58,7 @@ private:
     static const Functions& functions() {
         static const Functions loaded = [] {
             Functions result;
-            if (const auto module = LoadLibraryW(L"powrprof.dll")) {
+            if (const auto module = LoadLibraryExW(L"powrprof.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32)) {
                 result.get_capabilities = reinterpret_cast<GetCapsFn>(reinterpret_cast<void*>(GetProcAddress(module, "GetPwrCapabilities")));
                 result.set_suspend_state = reinterpret_cast<SuspendFn>(reinterpret_cast<void*>(GetProcAddress(module, "SetSuspendState")));
             }

@@ -551,13 +551,15 @@ public:
 
     // Setter for theme preference
     bool set_theme(unsigned theme) {
-        if (theme > 2) return false;
+        // Never write before the saved data has been loaded: that would replace it.
+        if (!ready_ || theme > 2) return false;
         auto candidate = snapshot_;
         candidate.theme = theme;
         return commit(candidate);
     }
 
     bool set_sound_enabled(bool enabled) {
+        if (!ready_) return false;
         if (snapshot_.sound_enabled == enabled) return true;
         auto candidate = snapshot_;
         candidate.sound_enabled = enabled;
@@ -576,7 +578,7 @@ public:
 
     // Setter for locale
     bool set_locale(unsigned locale) {
-        if (locale > 1) return false;
+        if (!ready_ || locale > 1) return false;
         auto candidate = snapshot_;
         candidate.locale = locale;
         return commit(candidate);

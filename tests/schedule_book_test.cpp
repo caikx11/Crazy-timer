@@ -807,6 +807,21 @@ void force_shutdown_is_explicit_per_schedule() {
     check(first.size() == 1 && first[0].force && second.size() == 1 && !second[0].force,
           "delivery carries each schedule's force setting");
 }
+void preferences_never_overwrite_unloaded_data() {
+    MemoryStorage storage;
+    {
+        ScheduleBook first(storage);
+        check(first.initialize({0, 0}) && first.create(Action::Sleep, L"30", {0, 0}), "prepare saved schedule");
+    }
+    const auto saved = storage.data;
+    ScheduleBook fresh(storage);  // not initialised yet: the saved schedule is not loaded
+    check(!fresh.set_locale(1) && !fresh.set_theme(2) && !fresh.set_sound_enabled(true),
+          "preferences are refused before the book is loaded");
+    check(storage.data.snapshot.records.size() == saved.snapshot.records.size() && !storage.data.snapshot.records.empty(),
+          "saved schedules survive an early preference change");
+    check(fresh.initialize({0, 0}) && fresh.set_locale(1) && fresh.list().size() == 1,
+          "after loading, preferences keep the schedules");
+}
 void failed_power_request_is_not_repeated_after_restart() {
     MemoryStorage storage;
     ScheduleBook book(storage);
@@ -822,6 +837,7 @@ void failed_power_request_is_not_repeated_after_restart() {
           backend.requests == 1, "failed request never repeats after restart and is not shown as completed");
 }
 int main() {
+    preferences_never_overwrite_unloaded_data();
     force_shutdown_is_explicit_per_schedule();
     failed_power_request_is_not_repeated_after_restart();
     monotonic_projection_has_no_stale_or_epoch_false_conflicts();
