@@ -1,4 +1,6 @@
-# Checklist de publicação (pendências explícitas)
+# Checklist de publicação
+
+**Atualização 01/11/2026:** o mod foi aceito no catálogo do Windhawk (windhawk-mods#6709, versão 0.7.0, mesclado por m417z). Os itens abaixo são o histórico do que foi decidido antes; os que ainda estiverem desmarcados continuam válidos para releases futuros no GitHub.
 
 Nada aqui foi decidido ou publicado. Itens abertos permanecem abertos até o usuário confirmar.
 

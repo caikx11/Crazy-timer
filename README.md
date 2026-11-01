@@ -16,11 +16,11 @@ Crazy Time schedules shutdown, sleep or hibernate on Windows. Each schedule can 
 
 > **The mod really shuts down, sleeps or hibernates your computer** when a schedule fires (`WindowsPowerBackend`). Save your work first, and try a short sleep before relying on it. The real path was manually tested on Windows 11 by the author (report of 2026-10-12, no detailed per-action record). Only the local preview (`scripts/build-preview.ps1`) runs in simulation, using a `SimulatedBackend`, and never touches the computer.
 
-![Weekly form and restored list (old capture, from when the project was still called Power Timer)](docs/screenshots/task04-calendar.png)
+![Crazy Time panel](docs/images/crazy-time-panel.png)
 
 ## Status
 
-Tested on Windows 11 with Windhawk 1.7.x. **Windows 10 has not been verified.** It is expected to work, but please report problems. It has not been submitted to the Windhawk catalog yet; see the [release checklist](docs/release-checklist.md). Technical documentation in `docs/` is in Portuguese.
+Tested on Windows 11 with Windhawk 1.7.x. **Windows 10 has not been verified.** It is expected to work, but please report problems. It is available in the Windhawk catalog (accepted in [windhawk-mods#6709](https://github.com/ramensoftware/windhawk-mods/pull/6709)); you can also build it yourself, see the [release checklist](docs/release-checklist.md). Technical documentation in `docs/` is in Portuguese.
 
 ## Install (local build)
 

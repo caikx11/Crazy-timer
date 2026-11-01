@@ -5,8 +5,8 @@
 
 namespace power_timer::windows {
 
-// Real Windows power actions. Used only when the user turns on "real actions" in
-// the mod settings. powrprof.dll is resolved at run time so the mod needs no
+// Real Windows power actions, used by the mod; the standalone preview simulates.
+// powrprof.dll is resolved at run time so the mod needs no
 // extra import library.
 class WindowsPowerBackend : public PowerBackend {
 public:
@@ -34,7 +34,7 @@ public:
         switch (action) {
             case Action::Shutdown: {
                 // Normal shutdown lets applications object; EWX_FORCE only with the schedule's explicit opt-in.
-                const UINT flags = EWX_POWEROFF | (force ? EWX_FORCE : 0);
+                const UINT flags = EWX_POWEROFF | (force ? EWX_FORCE : EWX_FORCEIFHUNG);
                 ok = ExitWindowsEx(flags, SHTDN_REASON_MAJOR_APPLICATION | SHTDN_REASON_MINOR_MAINTENANCE | SHTDN_REASON_FLAG_PLANNED);
                 break;
             }

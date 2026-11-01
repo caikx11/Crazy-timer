@@ -15,8 +15,18 @@ $binary = Join-Path $output 'crazy-time.dll'
 # official stable launcher verbatim. System includes remain intact.
 $parts = @('src/scheduler.hpp', 'src/calendar.hpp', 'src/schedule_types.hpp', 'src/schedule_validation.hpp', 'src/schedule_codec.hpp', 'src/schedule_book.hpp', 'src/strings.hpp', 'src/strings_en.hpp', 'src/warning_tracker.hpp', 'src/power_executor.hpp', 'src/windows/windows_power_backend.hpp', 'src/windows/schedule_file.hpp', 'src/windows/local_calendar.hpp', 'src/windows/tray_host.hpp', 'src/windows/mod_entry.cpp')
 $builder = [Text.StringBuilder]::new()
+# The Windhawk metadata, readme and settings blocks must come first, so they are
+# taken from the top of mod_entry.cpp; the license follows as a comment.
+$entry = [IO.File]::ReadAllText((Join-Path $projectRoot 'src/windows/mod_entry.cpp'))
+$settingsEnd = '// ==/WindhawkModSettings=='
+$cut = $entry.IndexOf($settingsEnd)
+if ($cut -lt 0) { throw 'Bloco de configurações do Windhawk não encontrado em mod_entry.cpp.' }
+$cut += $settingsEnd.Length
+[void]$builder.Append($entry.Substring(0, $cut))
+$license = [IO.File]::ReadAllText((Join-Path $projectRoot 'LICENSE'))
+[void]$builder.Append("`n/*`n" + $license + "`n*/`n")
 foreach ($part in $parts) {
-    $content = [IO.File]::ReadAllText((Join-Path $projectRoot $part))
+    $content = if ($part -eq 'src/windows/mod_entry.cpp') { $entry.Substring($cut) } else { [IO.File]::ReadAllText((Join-Path $projectRoot $part)) }
     $content = [regex]::Replace($content, '(?m)^#pragma once\r?\n', '')
     $content = [regex]::Replace($content, '(?m)^#include "[^"\r\n]+"\r?\n', '')
     [void]$builder.AppendLine("// Source: $part")
@@ -27,7 +37,7 @@ foreach ($part in $parts) {
 # Quoted -D values lose their quotes through Windows PowerShell 5.1, so the mod identity
 # comes from a generated prelude instead of editing the official launcher.
 $prelude = Join-Path $output 'mod-identity.h'
-[IO.File]::WriteAllText($prelude, '#define WH_MOD_ID L"local@crazy-time"' + "`n" + '#define WH_MOD_VERSION L"0.6.0"' + "`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($prelude, '#define WH_MOD_ID L"local@crazy-time"' + "`n" + '#define WH_MOD_VERSION L"0.7.0"' + "`n", [Text.UTF8Encoding]::new($false))
 $arguments = @(
     '-std=c++23', '-O2', '-shared', '-Wall', '-Wextra',
     '-DUNICODE', '-D_UNICODE', '-DWINVER=0x0A00', '-D_WIN32_WINNT=0x0A00',

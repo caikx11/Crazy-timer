@@ -16,11 +16,11 @@ Crazy Time programa desligar, suspender ou hibernar o Windows. Cada agendamento 
 
 **O mod realmente desliga, suspende ou hiberna o computador** quando um agendamento dispara (`WindowsPowerBackend`). Salve seu trabalho antes e teste primeiro com uma suspensão curta. O caminho real foi testado manualmente no Windows 11 pelo autor (relato de 12/10/2026, sem registro detalhado por ação). Só a prévia local (`scripts/build-preview.ps1`) roda em simulação, com um `SimulatedBackend`, e nunca age sobre o computador.
 
-![Formulário semanal e lista recuperada (captura antiga, quando o projeto ainda se chamava Power Timer)](docs/screenshots/task04-calendar.png)
+![Painel do Crazy Time](docs/images/crazy-time-panel.png)
 
 ## Estado
 
-Testado no Windows 11 com Windhawk 1.7.x. **Windows 10 não foi verificado.** O Windhawk instalado precisa ser atualizado manualmente colando a fonte gerada no editor (veja a instalação local). Publicação no catálogo do Windhawk ainda não foi feita; veja o [checklist de publicação](docs/release-checklist.md). A documentação técnica em `docs/` está em português.
+Testado no Windows 11 com Windhawk 1.7.x. **Windows 10 não foi verificado.** O Windhawk instalado precisa ser atualizado manualmente colando a fonte gerada no editor (veja a instalação local). O mod está no catálogo do Windhawk (aceito em [windhawk-mods#6709](https://github.com/ramensoftware/windhawk-mods/pull/6709)); veja também o [checklist de publicação](docs/release-checklist.md). A documentação técnica em `docs/` está em português.
 
 - [Validação e limitações atuais](docs/validation/task-04.md)
 - [Roteiro de validação Windows 11](docs/validation/task-12-roteiro-win11.md)

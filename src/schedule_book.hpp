@@ -551,7 +551,6 @@ public:
 
     // Setter for theme preference
     bool set_theme(unsigned theme) {
-        // Never write before the saved data has been loaded: that would replace it.
         if (!ready_ || theme > 2) return false;
         auto candidate = snapshot_;
         candidate.theme = theme;

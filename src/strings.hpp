@@ -1,7 +1,7 @@
 #pragma once
 
 namespace power_timer::text {
-// UI catalog boundary. Locale selection and English arrive in ticket 11.
+// Portuguese UI catalog; strings_en.hpp provides the English counterpart.
 inline constexpr auto title = L"Crazy Time";
 inline constexpr auto theme_label = L"Tema";
 inline constexpr auto language_label = L"Idioma";
@@ -67,11 +67,12 @@ inline constexpr auto theme_light = L"Claro";
 inline constexpr auto theme_dark = L"Escuro";
 inline constexpr const wchar_t* theme_strings[] = {theme_auto, theme_light, theme_dark};
 inline constexpr auto notification_settings = L"Visibilidade do ícone no Windows";
-inline constexpr auto exit = L"Sair do Crazy Time";
+inline constexpr auto exit = L"Sair até reativar o mod";
 inline constexpr auto settings_note = L"Duração e ação são configuradas neste painel.";
 inline constexpr auto settings_error = L"Não foi possível abrir as configurações do Windows.";
 inline constexpr auto tray_error = L"Ícone indisponível. Tentando reconectar à barra…";
 inline constexpr auto clock_empty = L"— — : — —";
+inline constexpr auto no_active_schedule = L"Nenhum agendamento ativo";
 inline constexpr auto countdown_notification = L"Falta 1 minuto. Abra o painel para acompanhar ou cancelar.";
 inline constexpr auto unavailable_time = L"Horário indisponível";
 inline constexpr auto add_schedule = L"Adicionar agendamento";

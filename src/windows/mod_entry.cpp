@@ -4,12 +4,11 @@
 // @name:pt-BR      Crazy Time
 // @description     Schedule shutdown, sleep or hibernate from a tray icon, with warnings and weekly repeats.
 // @description:pt-BR Agende desligar, suspender ou hibernar pelo ícone da barra, com avisos e repetição semanal.
-// @version         0.6.0
+// @version         0.7.0
 // @author          caikx11
 // @github          https://github.com/caikx11
 // @license         MIT
 // @include         windhawk.exe
-// @architecture    x86
 // @compilerOptions -lshell32 -lcomctl32 -lgdi32 -ladvapi32
 // ==/WindhawkMod==
 
@@ -19,6 +18,8 @@
 
 A minimalist scheduler for shutdown, sleep and hibernate, living in the
 notification area. Português abaixo.
+
+![Crazy Time panel](https://raw.githubusercontent.com/caikx11/Crazy-timer/c92d0c0f575f877a535377ca7ccf28734ca42306/docs/images/crazy-time-panel.png)
 
 > **This mod really shuts down, sleeps or hibernates your computer** when a
 > schedule fires. Save your work first. A warning notification appears before
@@ -47,8 +48,15 @@ notification area. Português abaixo.
 2. Pick the action and how it is scheduled, then press **Add schedule**.
 3. Click the tray icon to open the panel again. Closing the panel keeps the
    countdown running; right-click the icon or use **Options** to exit.
+   **Exit** stops scheduling until Windhawk restarts or the mod is toggled off
+   and on again; Windhawk still lists the mod as enabled.
 4. Disabling the mod stops everything and removes the icon. Schedules are saved
    per user; occurrences that expired while the mod was off are not run.
+
+Schedules are stored in Windhawk's mod storage, in a file named with your user
+SID. On first use, an existing legacy LocalAppData schedule file is copied there
+without overwriting an existing destination. The legacy file is kept as a backup.
+Removing the mod deletes Windhawk's managed storage; the legacy backup remains.
 
 ## Português
 
@@ -58,7 +66,7 @@ Agendador minimalista de desligar, suspender e hibernar, na área de notificaç�
 agendamento dispara. Salve seu trabalho antes. Uma notificação de aviso aparece
 antes da ação e você pode cancelar ou adiar a ocorrência pelo painel.
 
-**Windows 10 em teste.** Desenvolvido e testado apenas no Windows 11. Deve
+**Não testado no Windows 10.** Desenvolvido e testado apenas no Windows 11. Deve
 funcionar no Windows 10 (versão 1809 ou mais nova para o tema escuro dos
 controles), mas isso não foi verificado. Relate problemas.
 
@@ -66,6 +74,8 @@ controles), mas isso não foi verificado. Relate problemas.
 duração, data e hora, ou repetição semanal) e clique em **Adicionar
 agendamento**. Clique no ícone da barra para reabrir o painel; fechar o
 painel não interrompe a contagem. Desativar o mod encerra tudo.
+**Sair** interrompe os agendamentos até reiniciar o Windhawk ou desativar e
+reativar o mod; ele ainda aparece como ativado no Windhawk.
 */
 // ==/WindhawkModReadme==
 
@@ -93,9 +103,7 @@ BOOL WhTool_ModInit() {
 }
 
 void WhTool_ModSettingsChanged() {
-    if (HWND window = power_timer::windows::host_window.load())
-        PostMessageW(window, power_timer::windows::sound_message,
-            Wh_GetIntSetting(L"soundEnabled") != 0 ? 1 : 0, 0);
+    // Notifications read the current Windhawk setting when they are emitted.
 }
 
 void WhTool_ModUninit() {
